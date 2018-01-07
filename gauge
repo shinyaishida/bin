@@ -1,0 +1,70 @@
+#!/bin/bash
+#
+# @(#) Prints a gauge to indicate column numbers.
+#
+# Copyright (c) 2013 Shinya Ishida. All rights reserved.
+#
+
+readonly DEFAULT_LENGTH=80
+
+function __PrintUsage() {
+    cat <<EOF
+Usage:
+  $(basename $0) [-t type] [length]
+Note:
+  - 'length' must be a non-negative integer.
+  - If 'length' is omitted, the default length ($DEFAULT_LENGTH) is used.
+  - Available gauge types are;
+    full: '+++++++++1++...'
+    even: ' + + + + 1 +...'
+    five: '    +    1  ...'
+    ten : '         1  ...'
+EOF
+}
+readonly -f __PrintUsage
+
+function __GetGaugeTemplate() {
+    local -r gauge_full='123456789'
+    local -r gauge_even=${gauge_full//[13579]/ }
+    local -r gauge_five=${gauge_full//[1-46-9]/ }
+    local -r gauge_ten=${gauge_full//[1-9]/ }
+    local -r gauge_default=${gauge_even}
+    local -r gauge_template_name="gauge_$1"
+    local selected_gauge=${!gauge_template_name}
+    selected_gauge=${selected_gauge-${gauge_default}}
+    echo "${selected_gauge//[0-9]/+}"
+}
+readonly -f __GetGaugeTemplate
+
+function __PrintGauge() {
+    local gauge_tmpl=$(__GetGaugeTemplate $1)
+    gauge=""
+    local -r dec_count=$(($2 / 10))
+    q=0
+    while [ $q -lt $dec_count ]; do
+	((q++))
+	gauge="$gauge$gauge_tmpl$(($q % 10))"
+    done
+    r=$(($2 % 10))
+    [ $r -gt 0 ] && gauge="$gauge${gauge_tmpl:0:$(($r - 1))}$r"
+    echo "$gauge"
+}
+readonly -f __PrintGauge
+
+#
+# Main routine
+#
+
+gauge_type=default
+while getopts "t:" flag; do
+    case $flag in
+	t)
+	    gauge_type=$OPTARG
+	    ;;
+    esac
+done
+shift $(($OPTIND - 1))
+
+[[ "$1" =~ ^[0-9]*$ ]] && \
+    __PrintGauge $gauge_type ${1-$DEFAULT_LENGTH} || \
+    __PrintUsage

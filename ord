@@ -1,0 +1,55 @@
+#!/bin/bash
+#
+# @(#) Utility to transform numbers into ordinal numbers
+#
+# Copyright (c) 2018 Shinya Ishida. All rights reserved.
+#
+
+function __ord() {
+    local digits=${#1}
+    local suffix='th'
+    [[ $digits == 1 ]] && {
+	case $1 in
+	    1)
+		suffix='st';;
+	    2)
+		suffix='nd';;
+	    3)
+		suffix='rd';;
+	esac
+    } || {
+	[[ ${1: -2:1} =~ ^[0|2-9]$ ]] && {
+	    case ${1: -1:1} in
+		1)
+		    suffix='st';;
+		2)
+		    suffix='nd';;
+		3)
+		    suffix='rd';;
+	    esac
+	}
+    }
+    echo $1$suffix
+}
+readonly -f __ord
+
+function __ords() {
+    local a=()
+    local i=0
+    for n in $@; do
+	[[ $n =~ ^0|[1-9][0-9]*$ ]] && {
+	    a[$i]=$(__ord $n)
+	} || {
+	    a[$i]="$n"
+	}
+	((i+=1))
+    done
+    echo "${a[@]}"
+}
+readonly -f __ords
+
+[ -p /dev/stdin ] && {
+    __ords $(cat -)
+} || {
+    __ords $@
+}

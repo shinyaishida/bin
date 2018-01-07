@@ -1,0 +1,31 @@
+#!/bin/bash
+#
+# @(#) Utility to transform arguments into a punctuated sequence.
+#
+# Copyright (c) 2018 Shinya Ishida. All rights reserved.
+#
+
+readonly conj='and'
+
+function __and() {
+    case $# in
+	0)
+	;;
+	1)
+	    echo $*;;
+	2)
+	    args="$*"
+	    echo "${args% *} ${conj} ${args##* }";;
+	*)
+	    args="$*"
+	    args=${args// /, }
+	    echo "${args%,*}, ${conj} ${args##*, }";;
+    esac
+}
+readonly -f __and
+
+[ -p /dev/stdin ] && {
+    __and $(cat -)
+} || {
+    __and $@
+}

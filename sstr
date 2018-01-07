@@ -1,0 +1,500 @@
+#!/bin/bash
+#
+# @(#) Utility to search strings in files interactively.
+#
+# Copyright (c) 2010 Shinya Ishida. All rights reserved.
+#
+# Search a keyword in files located in a directory and its subdirectories.
+# The search result is printed with file names and line numbers. Additional
+# actions, extra search, viewing/editing a file, etc, can be applied to the
+# result interactively.
+#
+
+##
+## Global variables
+##
+
+readonly ME=$0
+readonly DEFAULT_DIR=$(pwd)
+readonly TMP_PREFIX="/tmp/$(basename ${ME}).$$"
+readonly TMP_INIT="${TMP_PREFIX}_init"
+readonly TMP_FILE1="${TMP_PREFIX}_1"
+readonly TMP_FILE2="${TMP_PREFIX}_2"
+readonly CMD_PROMPT="command (hit 'h' for help): "
+readonly IGN_CASE_FLAG='-i'
+
+# Fixed during initalization
+SEARCH_DIR=""
+SEARCH_KEY=
+INIT_SEARCH=
+CMD_MAP=
+CMD_HELP=
+
+# Mutable
+IGN_CASE=${IGN_CASE_FLAG}
+INPUT=
+SEARCH_HISTORY=()
+QUICK_UNDO=
+
+
+##
+## Signal traps
+##
+
+function __CleanUp() {
+    rm -f ${TMP_PREFIX}* &>/dev/null
+}
+readonly -f __CleanUp
+
+trap "__CleanUp" 1 2 3 15
+
+
+##
+## External specification
+##
+
+function __PrintUsage() {
+    cat <<EOF
+Usage:
+  $(basename ${ME}) [-c] [-d directory] <key>
+Note:
+  - String search is not case-sensitive.  Use '-c' for case-sensitive search.
+  - Binary files are out of the search.
+  - If '-d directory' is omitted, the current directory is used.
+EOF
+}
+readonly -f __PrintUsage
+
+
+##
+## Termination handling
+##
+
+function __ExitWith() {
+    local -r IFS='@'
+    # Indices of this array are corresponding to exit status values.
+    local -r err_msgs=("" $(cat <<EOF | tr '\n' "${IFS}"
+no matches
+failed in initialization
+directory '${SEARCH_DIR}' not found
+no key specified
+failed in first search
+command not found
+EOF
+	    ))
+    __CleanUp
+    case "$1" in
+	0)
+	    exit 0;;
+	[1-9])
+	    echo "${err_msgs[$1]}" 1>&2
+	    exit $1;;
+	*)
+	    echo "ERROR: unexpected error" 1>&2
+	    exit 127;;
+    esac
+}
+readonly -f __ExitWith
+
+
+##
+## Functions
+##
+
+#
+# Utility functions
+#
+
+steditor_cands=(awk gawk)
+steditor=
+for c in ${steditor_cands[@]}; do
+    which $c &>/dev/null && steditor=$c && break
+done
+case ${steditor} in
+    awk|gawk)
+	function __GetHitCount() {
+	    wc -l ${TMP_FILE1} | ${steditor} '{ print $1 }'
+	};;
+    *)
+	function __GetHitCount() {
+	    wc -l ${TMP_FILE1} | sed "s/^.*\([0-9]+\).*$/\1/1"
+	};;
+esac
+readonly -f __GetHitCount
+
+
+function __PromptInput() {
+    printf "$1" >&2 && read INPUT && [ "$INPUT" ]
+}
+readonly -f __PromptInput
+
+
+function __SearchEntries() {
+    __PromptInput "key:" && \
+	local -r search_opt="${IGN_CASE} $@ ${INPUT}" && \
+	SEARCH_HISTORY[${#SEARCH_HISTORY[@]}]="${search_opt}" && \
+	cat ${TMP_FILE1} > ${TMP_FILE2} && \
+	QUICK_UNDO=yes && \
+	grep ${search_opt} ${TMP_FILE2} > ${TMP_FILE1}
+}
+readonly -f __SearchEntries
+
+
+function __SelectEntry() {
+    local -r hit_count=$(__GetHitCount)
+    [ ${hit_count} -gt 0 ] && \
+	__PromptInput "number (1-${hit_count}):" && \
+	[[ ${INPUT} =~ ^[1-9][0-9]*$ ]] && \
+	[ ${INPUT} -le ${hit_count} ] && \
+	head -${INPUT} ${TMP_FILE1} | tail -1
+}
+readonly -f __SelectEntry
+
+
+function __GetCaseSensitivity() {
+    [ "${IGN_CASE}" ] && echo "case-ignoring" || echo "case-sensitive"
+}
+readonly -f __GetCaseSensitivity
+
+
+function __ToggleCaseSensitivity() {
+    IGN_CASE=$([ "${IGN_CASE}" ] && echo "" || echo "${IGN_CASE_FLAG}")
+}
+readonly -f __ToggleCaseSensitivity
+
+
+function __ConductFirstSearch() {
+    grep ${INIT_SEARCH} > ${TMP_INIT} || __ExitWith 1
+    cat ${TMP_INIT} > ${TMP_FILE1}
+}
+readonly -f __ConductFirstSearch
+
+
+function __RerunSearches() {
+    local i=0
+    while [ $i -lt ${#SEARCH_HISTORY[@]} ]; do
+	cat ${TMP_FILE1} > ${TMP_FILE2}
+	grep ${SEARCH_HISTORY[$i]} ${TMP_FILE2} > ${TMP_FILE1}
+	((i+=1))
+    done
+}
+
+
+printer_cands=(more less)
+printer=
+for c in ${printer_cands[@]}; do
+    which $c &>/dev/null && readonly printer=$c && break
+done
+case ${printer} in
+    more)
+	function __PrintSearchResult() {
+	    [ $(__GetHitCount) -gt 0 ] && cat -n ${TMP_FILE1} | more
+	    echo "$(__GetHitCount) line(s) matched"
+	};;
+    less)
+	function __PrintSearchResult() {
+	    [ $(__GetHitCount) -gt 0 ] && less -N ${TMP_FILE1}
+	    echo "$(__GetHitCount) line(s) matched"
+	};;
+    *)
+	function __PrintSearchResult() {
+	    [ $(__GetHitCount) -gt 0 ] && cat -n ${TMP_FILE1}
+	    echo "$(__GetHitCount) line(s) matched"
+	};;
+esac
+readonly -f __PrintSearchResult
+
+
+function __PrintCommandList() {
+    local -r IFS=''
+    (eval echo $(echo ${CMD_HELP} | tr '\n' @)) | tr @ '\n'
+}
+readonly -f __PrintCommandList
+
+
+#
+# Command functions
+#
+# To add a new command, the function must have a comment in the following
+# format.  This special comment is parsed by this script itself and registered.
+# '@func' is a tag to specify the function's name.  '@key' is a tag to indicate
+# an alphabetical letter assigned to call the function via the prompt.  '@desc'
+# is a tag for a brief description of the function.  This description is
+# printed in the command help.  The note may contain scripts; i.e., variables,
+# ${VAR}, and command/function calls, $(command...).  Instead, to print letters
+# and strings, which have a special meaning for bash script, as they are, they
+# must be quoted with single quotation, like '(' and ')'.
+#
+# Format:
+# # @func FUNCTION_NAME
+# # @key K
+# # @desc A BRIEF DESCRIPTION OF THE FUNCTION IN A LINE
+#
+# Note:
+# - All tags are required, in the order above, for a function to register.
+# - Only a tag can be in a line.
+# - A tag line must start with '#'.
+# - Only spaces, ' ', may be between the '#' and a tag.
+
+#
+# @func PrintSearchResult
+# @key p
+# @desc print search result
+#
+function PrintSearchResult() {
+    __PrintSearchResult
+}
+readonly -f PrintSearchResult
+
+
+#
+# @func SearchEntriesContainingKey
+# @key m
+# @desc get lines containing substring matching a specified key
+#
+function SearchEntriesContainingKey() {
+    __SearchEntries
+    __PrintSearchResult
+}
+readonly -f SearchEntriesContainingKey
+
+
+#
+# @func SearchEntriesNotContainingKey
+# @key n
+# @desc get lines not containing substring matching a specified key
+#
+function SearchEntriesNotContainingKey() {
+    __SearchEntries -v
+    __PrintSearchResult
+}
+readonly -f SearchEntriesNotContainingKey
+
+
+#
+# @func UndoSearch
+# @key u
+# @desc undo last search
+#
+function UndoSearch() {
+    if [ ${#SEARCH_HISTORY[@]} -gt 0 ]; then
+	unset SEARCH_HISTORY[$((${#SEARCH_HISTORY[@]} - 1))]
+	if [ "${QUICK_UNDO-}" ]; then
+	    [ -f ${TMP_FILE2} ] && cat ${TMP_FILE2} > ${TMP_FILE1}
+	    QUICK_UNDO=
+	else
+	    cat ${TMP_INIT} > ${TMP_FILE1}
+	    __RerunSearches
+	fi
+    fi
+    __PrintSearchResult
+}
+readonly -f UndoSearch
+
+
+#
+# @func RefreshSearch
+# @key r
+# @desc refresh search result
+#
+function RefreshSearch() {
+    __ConductFirstSearch && __RerunSearches
+    __PrintSearchResult
+}
+readonly -f RefreshSearch
+
+
+#
+# @func ViewInFile
+# @key v
+# @desc view a line with file viewer '('${viewer-not available}')'
+#
+viewer_cands=(less more)
+viewer=
+for c in ${viewer_cands[@]}; do
+    which $c &>/dev/null && readonly viewer=$c && break
+done
+case ${viewer} in
+    more)
+	function ViewInFile() {
+	    read file_name line_num rest < <(__SelectEntry | tr ':' ' ') && \
+		cat -n ${file_name} | more +${line_num}
+	};;
+    less)
+	function ViewInFile() {
+	    read file_name line_num rest < <(__SelectEntry | tr ':' ' ') && \
+		cat -n ${file_name} | less +${line_num}g
+	};;
+    *)
+	function ViewInFile() {
+	    local -r range=10
+	    read file_name line_num rest < <(__SelectEntry | tr ':' ' ') && \
+		cat -n ${file_name} | \
+		head -$((${line_num} + ${range}))  | \
+		tail -$((${range} * 2 + 1))
+	};;
+esac
+readonly -f ViewInFile
+
+
+#
+# @func EditFile
+# @key e
+# @desc edit a line with text editor '('${editor-not available}')'
+#
+editor_cands=(vi vim)
+editor=
+for cand in ${editor_cands[@]}; do
+    which ${cand} &>/dev/null && editor=${cand} && break
+done
+case ${editor} in
+    vi|vim)
+	function EditFile() {
+	    read file_name line_num rest < <(__SelectEntry | tr ':' ' ') && \
+		${editor} +${line_num} ${file_name}
+	};;
+    *)
+	function EditFile() {
+	    echo "cannot use this function in your environment"
+	};;
+esac
+readonly -f EditFile
+
+
+#
+# @func ListFileNames
+# @key l
+# @desc list file names hit in current search
+#
+function ListFileNames() {
+    cut -d : -f 1 ${TMP_FILE1} | sort -u
+}
+readonly -f ListFileNames
+
+
+#
+# @func SaveSearchResult
+# @key s
+# @desc save current result in a file '('overwritten')'
+#
+function SaveSearchResult() {
+    __PromptInput "file:" && cat ${TMP_FILE1} > ${INPUT}
+}
+readonly SaveSearchResult
+
+
+#
+# @func ToggleCaseSensitivity
+# @key c
+# @desc toggle case-sensitivity of search '('$(__GetCaseSensitivity) now')'
+#
+function ToggleCaseSensitivity() {
+    __ToggleCaseSensitivity && __GetCaseSensitivity
+}
+readonly -f ToggleCaseSensitivity
+
+
+#
+# @func ShowHelp
+# @key h
+# @desc show this help
+#
+function ShowHelp() {
+    __PrintCommandList
+}
+readonly -f ShowHelp
+
+
+#
+# @func Quit
+# @key q
+# @desc quit search
+#
+function Quit() {
+    __ExitWith 0
+}
+readonly -f Quit
+
+
+#
+# Sub-routines
+#
+
+# Note: Using associative arrays seems a better choice to implement this
+# function.  However, it is supported from bash version 4.  The MacOS's default
+# bash (/bin/bash) is version 3.
+function __BuildCommandLists() {
+    local cmd_docs=$(grep '^# *@' ${ME} | tr '\n' ' ')
+    cmd_docs=${cmd_docs//'# '/}
+    local IFS=$'\n'
+    cmd_docs=(${cmd_docs//@func /$'\n'})
+    IFS=' '
+    local i=0
+    while [ $i -lt ${#cmd_docs[@]} ]; do
+	read func_name at_key k at_desc desc < <(echo ${cmd_docs[$i]})
+	[ "${func_name}" -a "${desc}" ] && \
+	    [ "${at_key}" = "@key" -a "${at_desc}" = "@desc" ] && \
+	    [[ "${k}" =~ ^[a-z]$ ]] && {
+	    CMD_MAP="${CMD_MAP+${CMD_MAP}$'\n'}${k} ${func_name}"
+	    CMD_HELP="${CMD_HELP+${CMD_HELP}$'\n'}  ${k}: ${desc}"
+	}
+	((i+=1))
+    done
+    readonly CMD_MAP=${CMD_MAP}
+    readonly CMD_HELP=${CMD_HELP}
+}
+readonly -f __BuildCommandLists
+
+
+function __GetCommandFunction() {
+    local IFS=''
+    grep "^${INPUT}" <<< ${CMD_MAP} | cut -d ' ' -f 2
+}
+
+function __ExecuteCommand() {
+    __PromptInput "${CMD_PROMPT}" && {
+	local -r cmd_func=$(__GetCommandFunction) || __ExitWith 6
+	if [ "${cmd_func}" ]; then
+	    ${cmd_func}
+	else
+	    __PrintCommandList
+	fi
+    }
+}
+readonly -f __ExecuteCommand
+
+
+##
+## Main routine
+##
+
+# Initialize the search process.
+__BuildCommandLists || __ExitWith 2
+
+# Parse the command line arguments.
+while getopts "cd:" flag; do
+    case $flag in
+	c)
+	    __ToggleCaseSensitivity;;
+	d)
+	    SEARCH_DIR=$OPTARG;;
+	*)
+	    __PrintUsage
+	    __ExitWith 0;;
+    esac
+done
+shift $(($OPTIND - 1))
+readonly SEARCH_DIR=${SEARCH_DIR:-${DEFAULT_DIR}}
+readonly SEARCH_KEY="$1"
+[ -d ${SEARCH_DIR} ] || __ExitWith 3
+[ "${SEARCH_KEY-}" ] || __ExitWith 4
+
+# Execute the first search.
+readonly INIT_SEARCH="-Inr ${IGN_CASE} ${SEARCH_KEY} ${SEARCH_DIR}"
+__ConductFirstSearch && {
+    __PrintSearchResult
+    # Enter the interactive search mode.
+    while [ x = x ]; do
+	__ExecuteCommand
+    done
+}
