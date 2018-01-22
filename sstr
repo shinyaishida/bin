@@ -22,6 +22,7 @@ readonly TMP_FILE1="${TMP_PREFIX}_1"
 readonly TMP_FILE2="${TMP_PREFIX}_2"
 readonly CMD_PROMPT="command (hit 'h' for help): "
 readonly IGN_CASE_FLAG='-i'
+readonly GREP=$(which grep)
 
 # Fixed during initalization
 SEARCH_DIR=""
@@ -135,7 +136,7 @@ function __SearchEntries() {
 	SEARCH_HISTORY[${#SEARCH_HISTORY[@]}]="${search_opt}" && \
 	cat ${TMP_FILE1} > ${TMP_FILE2} && \
 	QUICK_UNDO=yes && \
-	grep ${search_opt} ${TMP_FILE2} > ${TMP_FILE1}
+	${GREP} ${search_opt} ${TMP_FILE2} > ${TMP_FILE1}
 }
 readonly -f __SearchEntries
 
@@ -164,7 +165,7 @@ readonly -f __ToggleCaseSensitivity
 
 
 function __ConductFirstSearch() {
-    grep ${INIT_SEARCH} > ${TMP_INIT} || __ExitWith 1
+    ${GREP} ${INIT_SEARCH} > ${TMP_INIT} || __ExitWith 1
     cat ${TMP_INIT} > ${TMP_FILE1}
 }
 readonly -f __ConductFirstSearch
@@ -174,7 +175,7 @@ function __RerunSearches() {
     local i=0
     while [ $i -lt ${#SEARCH_HISTORY[@]} ]; do
 	cat ${TMP_FILE1} > ${TMP_FILE2}
-	grep ${SEARCH_HISTORY[$i]} ${TMP_FILE2} > ${TMP_FILE1}
+	${GREP} ${SEARCH_HISTORY[$i]} ${TMP_FILE2} > ${TMP_FILE1}
 	((i+=1))
     done
 }
@@ -424,7 +425,7 @@ readonly -f Quit
 # function.  However, it is supported from bash version 4.  The MacOS's default
 # bash (/bin/bash) is version 3.
 function __BuildCommandLists() {
-    local cmd_docs=$(grep '^# *@' ${ME} | tr '\n' ' ')
+    local cmd_docs=$(${GREP} '^# *@' ${ME} | tr '\n' ' ')
     cmd_docs=${cmd_docs//'# '/}
     local IFS=$'\n'
     cmd_docs=(${cmd_docs//@func /$'\n'})
@@ -448,7 +449,7 @@ readonly -f __BuildCommandLists
 
 function __GetCommandFunction() {
     local IFS=''
-    grep "^${INPUT}" <<< ${CMD_MAP} | cut -d ' ' -f 2
+    ${GREP} "^${INPUT}" <<< ${CMD_MAP} | cut -d ' ' -f 2
 }
 
 function __ExecuteCommand() {
