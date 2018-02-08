@@ -21,8 +21,8 @@ readonly TMP_INIT="${TMP_PREFIX}_init"
 readonly TMP_FILE1="${TMP_PREFIX}_1"
 readonly TMP_FILE2="${TMP_PREFIX}_2"
 readonly CMD_PROMPT="command (hit 'h' for help): "
-readonly IGN_CASE_FLAG='-i'
 readonly GREP=$(which grep)
+readonly IGN_CASE_FLAG='-i'
 
 # Fixed during initalization
 SEARCH_DIR=""
@@ -57,11 +57,12 @@ trap "__CleanUp" 1 2 3 15
 function __PrintUsage() {
     cat <<EOF
 Usage:
-  $(basename ${ME}) [-c] [-d directory] <key>
+  $(basename ${ME}) [-c] [-d <directory>] [-X <directory>[,<directory>]..]] <key>
 Note:
   - String search is not case-sensitive.  Use '-c' for case-sensitive search.
   - Binary files are out of the search.
-  - If '-d directory' is omitted, the current directory is used.
+  - If '-d' option is omitted, the current directory is used.
+  - '-X' option accepts one or more directories to be excluded from search.
 EOF
 }
 readonly -f __PrintUsage
@@ -82,7 +83,7 @@ no key specified
 failed in first search
 command not found
 EOF
-	    ))
+    ))
     __CleanUp
     case "$1" in
 	0)
@@ -132,11 +133,11 @@ readonly -f __PromptInput
 
 function __SearchEntries() {
     __PromptInput "key:" && \
-	local -r search_opt="${IGN_CASE} $@ ${INPUT}" && \
-	SEARCH_HISTORY[${#SEARCH_HISTORY[@]}]="${search_opt}" && \
-	cat ${TMP_FILE1} > ${TMP_FILE2} && \
-	QUICK_UNDO=yes && \
-	${GREP} ${search_opt} ${TMP_FILE2} > ${TMP_FILE1}
+      local -r search_opt="${IGN_CASE} $@ ${INPUT}" && \
+      SEARCH_HISTORY[${#SEARCH_HISTORY[@]}]="${search_opt}" && \
+      cat ${TMP_FILE1} > ${TMP_FILE2} && \
+      QUICK_UNDO=yes && \
+      ${GREP} ${search_opt} ${TMP_FILE2} > ${TMP_FILE1}
 }
 readonly -f __SearchEntries
 
@@ -144,10 +145,10 @@ readonly -f __SearchEntries
 function __SelectEntry() {
     local -r hit_count=$(__GetHitCount)
     [ ${hit_count} -gt 0 ] && \
-	__PromptInput "number (1-${hit_count}):" && \
-	[[ ${INPUT} =~ ^[1-9][0-9]*$ ]] && \
-	[ ${INPUT} -le ${hit_count} ] && \
-	head -${INPUT} ${TMP_FILE1} | tail -1
+      __PromptInput "number (1-${hit_count}):" && \
+      [[ ${INPUT} =~ ^[1-9][0-9]*$ ]] && \
+      [ ${INPUT} -le ${hit_count} ] && \
+      head -${INPUT} ${TMP_FILE1} | tail -1
 }
 readonly -f __SelectEntry
 
@@ -164,7 +165,18 @@ function __ToggleCaseSensitivity() {
 readonly -f __ToggleCaseSensitivity
 
 
+function __ExcludeDirectories() {
+    local -r dirs=${1//,/ }
+    local f=
+    for	dir in ${dirs[@]}; do
+	f=${dir:+--exclude-dir=${dir} }${f}
+    done
+    EXCLUDE_DIRS=${f}
+}
+
+
 function __ConductFirstSearch() {
+    echo ${GREP} ${INIT_SEARCH}
     ${GREP} ${INIT_SEARCH} > ${TMP_INIT} || __ExitWith 1
     cat ${TMP_INIT} > ${TMP_FILE1}
 }
@@ -279,14 +291,14 @@ readonly -f SearchEntriesNotContainingKey
 #
 function UndoSearch() {
     if [ ${#SEARCH_HISTORY[@]} -gt 0 ]; then
-	unset SEARCH_HISTORY[$((${#SEARCH_HISTORY[@]} - 1))]
-	if [ "${QUICK_UNDO-}" ]; then
-	    [ -f ${TMP_FILE2} ] && cat ${TMP_FILE2} > ${TMP_FILE1}
-	    QUICK_UNDO=
-	else
-	    cat ${TMP_INIT} > ${TMP_FILE1}
-	    __RerunSearches
-	fi
+      unset SEARCH_HISTORY[$((${#SEARCH_HISTORY[@]} - 1))]
+      if [ "${QUICK_UNDO-}" ]; then
+	[ -f ${TMP_FILE2} ] && cat ${TMP_FILE2} > ${TMP_FILE1}
+	QUICK_UNDO=
+      else
+	  cat ${TMP_INIT} > ${TMP_FILE1}
+	  __RerunSearches
+      fi
     fi
     __PrintSearchResult
 }
@@ -319,18 +331,18 @@ case ${viewer} in
     more)
 	function ViewInFile() {
 	    read file_name line_num rest < <(__SelectEntry | tr ':' ' ') && \
-		cat -n ${file_name} | more +${line_num}
+	      cat -n ${file_name} | more +${line_num}
 	};;
     less)
 	function ViewInFile() {
 	    read file_name line_num rest < <(__SelectEntry | tr ':' ' ') && \
-		cat -n ${file_name} | less +${line_num}g
+	      cat -n ${file_name} | less +${line_num}g
 	};;
     *)
 	function ViewInFile() {
 	    local -r range=10
 	    read file_name line_num rest < <(__SelectEntry | tr ':' ' ') && \
-		cat -n ${file_name} | \
+	      cat -n ${file_name} | \
 		head -$((${line_num} + ${range}))  | \
 		tail -$((${range} * 2 + 1))
 	};;
@@ -352,7 +364,7 @@ case ${editor} in
     vi|vim)
 	function EditFile() {
 	    read file_name line_num rest < <(__SelectEntry | tr ':' ' ') && \
-		${editor} +${line_num} ${file_name}
+	      ${editor} +${line_num} ${file_name}
 	};;
     *)
 	function EditFile() {
@@ -434,11 +446,11 @@ function __BuildCommandLists() {
     while [ $i -lt ${#cmd_docs[@]} ]; do
 	read func_name at_key k at_desc desc < <(echo ${cmd_docs[$i]})
 	[ "${func_name}" -a "${desc}" ] && \
-	    [ "${at_key}" = "@key" -a "${at_desc}" = "@desc" ] && \
-	    [[ "${k}" =~ ^[a-z]$ ]] && {
-	    CMD_MAP="${CMD_MAP+${CMD_MAP}$'\n'}${k} ${func_name}"
-	    CMD_HELP="${CMD_HELP+${CMD_HELP}$'\n'}  ${k}: ${desc}"
-	}
+	  [ "${at_key}" = "@key" -a "${at_desc}" = "@desc" ] && \
+	  [[ "${k}" =~ ^[a-z]$ ]] && {
+	      CMD_MAP="${CMD_MAP+${CMD_MAP}$'\n'}${k} ${func_name}"
+	      CMD_HELP="${CMD_HELP+${CMD_HELP}$'\n'}  ${k}: ${desc}"
+	  }
 	((i+=1))
     done
     readonly CMD_MAP=${CMD_MAP}
@@ -456,7 +468,7 @@ function __ExecuteCommand() {
     __PromptInput "${CMD_PROMPT}" && {
 	local -r cmd_func=$(__GetCommandFunction) || __ExitWith 6
 	if [ "${cmd_func}" ]; then
-	    ${cmd_func}
+	  ${cmd_func}
 	else
 	    __PrintCommandList
 	fi
@@ -473,12 +485,14 @@ readonly -f __ExecuteCommand
 __BuildCommandLists || __ExitWith 2
 
 # Parse the command line arguments.
-while getopts "cd:" flag; do
+while getopts "cd:X:" flag; do
     case $flag in
 	c)
 	    __ToggleCaseSensitivity;;
 	d)
 	    SEARCH_DIR=$OPTARG;;
+	X)
+	    __ExcludeDirectories $OPTARG;;
 	*)
 	    __PrintUsage
 	    __ExitWith 0;;
@@ -486,12 +500,12 @@ while getopts "cd:" flag; do
 done
 shift $(($OPTIND - 1))
 readonly SEARCH_DIR=${SEARCH_DIR:-${DEFAULT_DIR}}
-readonly SEARCH_KEY="$1"
+readonly SEARCH_KEY="-e $1"
 [ -d ${SEARCH_DIR} ] || __ExitWith 3
 [ "${SEARCH_KEY-}" ] || __ExitWith 4
 
 # Execute the first search.
-readonly INIT_SEARCH="-Inr ${IGN_CASE} ${SEARCH_KEY} ${SEARCH_DIR}"
+readonly INIT_SEARCH="-Inr ${IGN_CASE} ${EXCLUDE_DIRS} ${SEARCH_KEY} ${SEARCH_DIR}"
 __ConductFirstSearch && {
     __PrintSearchResult
     # Enter the interactive search mode.
