@@ -15,8 +15,9 @@
 ##
 
 readonly ME=$0
+readonly MY_BASE=$(basename ${ME})
 readonly DEFAULT_DIR=$(pwd)
-readonly TMP_PREFIX="/tmp/$(basename ${ME}).$$"
+readonly TMP_PREFIX="/tmp/${MY_BASE}.$$"
 readonly TMP_INIT="${TMP_PREFIX}_init"
 readonly TMP_FILE1="${TMP_PREFIX}_1"
 readonly TMP_FILE2="${TMP_PREFIX}_2"
@@ -26,7 +27,7 @@ readonly IGN_CASE_FLAG='-i'
 
 # Fixed during initalization
 SEARCH_DIR=""
-SEARCH_KEY=
+SEARCH_KEYS=
 INIT_SEARCH=
 CMD_MAP=
 CMD_HELP=
@@ -57,9 +58,10 @@ trap "__CleanUp" 1 2 3 15
 function __PrintUsage() {
     cat <<EOF
 Usage:
-  $(basename ${ME}) [-c] [-d <directory>] [-X <directory>[,<directory>]..]] <key>
+  ${MY_BASE} [-c] [-d <directory>] [-X <directory>[,<directory>]..] <pattern>[ <pattern>]..
 Note:
-  - String search is not case-sensitive.  Use '-c' for case-sensitive search.
+  - If multiple patterns are specified, ${MY_BASE} picks lines containing any of the patterns.
+  - String search is not case-sensitive. Use '-c' for case-sensitive search.
   - Binary files are out of the search.
   - If '-d' option is omitted, the current directory is used.
   - '-X' option accepts one or more directories to be excluded from search.
@@ -124,12 +126,10 @@ case ${steditor} in
 esac
 readonly -f __GetHitCount
 
-
 function __PromptInput() {
     printf "$1" >&2 && read INPUT && [ "$INPUT" ]
 }
 readonly -f __PromptInput
-
 
 function __SearchEntries() {
     __PromptInput "key:" && \
@@ -141,7 +141,6 @@ function __SearchEntries() {
 }
 readonly -f __SearchEntries
 
-
 function __SelectEntry() {
     local -r hit_count=$(__GetHitCount)
     [ ${hit_count} -gt 0 ] && \
@@ -152,18 +151,15 @@ function __SelectEntry() {
 }
 readonly -f __SelectEntry
 
-
 function __GetCaseSensitivity() {
     [ "${IGN_CASE}" ] && echo "case-ignoring" || echo "case-sensitive"
 }
 readonly -f __GetCaseSensitivity
 
-
 function __ToggleCaseSensitivity() {
     IGN_CASE=$([ "${IGN_CASE}" ] && echo "" || echo "${IGN_CASE_FLAG}")
 }
 readonly -f __ToggleCaseSensitivity
-
 
 function __ExcludeDirectories() {
     local -r dirs=${1//,/ }
@@ -174,6 +170,12 @@ function __ExcludeDirectories() {
     EXCLUDE_DIRS=${f}
 }
 
+function __SetSearchKeys() {
+    SEARCH_KEYS=
+    for key in $@; do
+	SEARCH_KEYS=${SEARCH_KEYS}${key:+ -e ${key}}
+    done
+}
 
 function __ConductFirstSearch() {
     echo ${GREP} ${INIT_SEARCH}
@@ -181,7 +183,6 @@ function __ConductFirstSearch() {
     cat ${TMP_INIT} > ${TMP_FILE1}
 }
 readonly -f __ConductFirstSearch
-
 
 function __RerunSearches() {
     local i=0
@@ -216,7 +217,6 @@ case ${printer} in
 	};;
 esac
 readonly -f __PrintSearchResult
-
 
 function __PrintCommandList() {
     local -r IFS=''
@@ -259,7 +259,6 @@ function PrintSearchResult() {
 }
 readonly -f PrintSearchResult
 
-
 #
 # @func SearchEntriesContainingKey
 # @key m
@@ -271,7 +270,6 @@ function SearchEntriesContainingKey() {
 }
 readonly -f SearchEntriesContainingKey
 
-
 #
 # @func SearchEntriesNotContainingKey
 # @key n
@@ -282,7 +280,6 @@ function SearchEntriesNotContainingKey() {
     __PrintSearchResult
 }
 readonly -f SearchEntriesNotContainingKey
-
 
 #
 # @func UndoSearch
@@ -304,7 +301,6 @@ function UndoSearch() {
 }
 readonly -f UndoSearch
 
-
 #
 # @func RefreshSearch
 # @key r
@@ -315,7 +311,6 @@ function RefreshSearch() {
     __PrintSearchResult
 }
 readonly -f RefreshSearch
-
 
 #
 # @func ViewInFile
@@ -349,7 +344,6 @@ case ${viewer} in
 esac
 readonly -f ViewInFile
 
-
 #
 # @func EditFile
 # @key e
@@ -373,7 +367,6 @@ case ${editor} in
 esac
 readonly -f EditFile
 
-
 #
 # @func ListFileNames
 # @key l
@@ -383,7 +376,6 @@ function ListFileNames() {
     cut -d : -f 1 ${TMP_FILE1} | sort -u
 }
 readonly -f ListFileNames
-
 
 #
 # @func SaveSearchResult
@@ -395,7 +387,6 @@ function SaveSearchResult() {
 }
 readonly SaveSearchResult
 
-
 #
 # @func ToggleCaseSensitivity
 # @key c
@@ -406,7 +397,6 @@ function ToggleCaseSensitivity() {
 }
 readonly -f ToggleCaseSensitivity
 
-
 #
 # @func ShowHelp
 # @key h
@@ -416,7 +406,6 @@ function ShowHelp() {
     __PrintCommandList
 }
 readonly -f ShowHelp
-
 
 #
 # @func Quit
@@ -457,7 +446,6 @@ function __BuildCommandLists() {
     readonly CMD_HELP=${CMD_HELP}
 }
 readonly -f __BuildCommandLists
-
 
 function __GetCommandFunction() {
     local IFS=''
@@ -500,12 +488,11 @@ while getopts "cd:X:" flag; do
 done
 shift $(($OPTIND - 1))
 readonly SEARCH_DIR=${SEARCH_DIR:-${DEFAULT_DIR}}
-readonly SEARCH_KEY="-e $1"
 [ -d ${SEARCH_DIR} ] || __ExitWith 3
-[ "${SEARCH_KEY-}" ] || __ExitWith 4
+__SetSearchKeys $@ && [ "${SEARCH_KEYS-}" ] || __ExitWith 4
 
 # Execute the first search.
-readonly INIT_SEARCH="-Inr ${IGN_CASE} ${EXCLUDE_DIRS} ${SEARCH_KEY} ${SEARCH_DIR}"
+readonly INIT_SEARCH="-Inr ${IGN_CASE} ${EXCLUDE_DIRS} ${SEARCH_KEYS} ${SEARCH_DIR}"
 __ConductFirstSearch && {
     __PrintSearchResult
     # Enter the interactive search mode.
