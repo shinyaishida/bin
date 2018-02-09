@@ -58,12 +58,13 @@ trap "__CleanUp" 1 2 3 15
 function __PrintUsage() {
     cat <<EOF
 Usage:
-  ${MY_BASE} [-c] [-d <directory>] [-X <directory>[,<directory>]..] <pattern>[ <pattern>]..
+  ${MY_BASE} [-c] [-d <directory>] [-x <file>[,<file>]..] [-X <directory>[,<directory>]..] <pattern>[ <pattern>]..
 Note:
   - If multiple patterns are specified, ${MY_BASE} picks lines containing any of the patterns.
   - String search is not case-sensitive. Use '-c' for case-sensitive search.
   - Binary files are out of the search.
   - If '-d' option is omitted, the current directory is used.
+  - '-x' option accepts one or more files to be excluded from search.
   - '-X' option accepts one or more directories to be excluded from search.
 EOF
 }
@@ -161,13 +162,20 @@ function __ToggleCaseSensitivity() {
 }
 readonly -f __ToggleCaseSensitivity
 
+function __ExcludeFiles() {
+    local -r files=${1//,/ }
+    EXCLUDE_FILES=
+    for file in ${files[@]}; do
+	EXCLUDE_FILES=${EXCLUDE_FILES}${file:+ --exclude=${file}}
+    done
+}
+
 function __ExcludeDirectories() {
     local -r dirs=${1//,/ }
-    local f=
+    EXCLUDE_DIRS=
     for	dir in ${dirs[@]}; do
-	f=${dir:+--exclude-dir=${dir} }${f}
+	EXCLUDE_DIRS=${EXCLUDE_DIRS}${dir:+ --exclude-dir=${dir}}
     done
-    EXCLUDE_DIRS=${f}
 }
 
 function __SetSearchKeys() {
@@ -178,7 +186,6 @@ function __SetSearchKeys() {
 }
 
 function __ConductFirstSearch() {
-    echo ${GREP} ${INIT_SEARCH}
     ${GREP} ${INIT_SEARCH} > ${TMP_INIT} || __ExitWith 1
     cat ${TMP_INIT} > ${TMP_FILE1}
 }
@@ -473,12 +480,14 @@ readonly -f __ExecuteCommand
 __BuildCommandLists || __ExitWith 2
 
 # Parse the command line arguments.
-while getopts "cd:X:" flag; do
+while getopts "cd:x:X:" flag; do
     case $flag in
 	c)
 	    __ToggleCaseSensitivity;;
 	d)
 	    SEARCH_DIR=$OPTARG;;
+	x)
+	    __ExcludeFiles $OPTARG;;
 	X)
 	    __ExcludeDirectories $OPTARG;;
 	*)
@@ -492,7 +501,7 @@ readonly SEARCH_DIR=${SEARCH_DIR:-${DEFAULT_DIR}}
 __SetSearchKeys $@ && [ "${SEARCH_KEYS-}" ] || __ExitWith 4
 
 # Execute the first search.
-readonly INIT_SEARCH="-Inr ${IGN_CASE} ${EXCLUDE_DIRS} ${SEARCH_KEYS} ${SEARCH_DIR}"
+readonly INIT_SEARCH="-Inr ${IGN_CASE} ${EXCLUDE_FILES} ${EXCLUDE_DIRS} ${SEARCH_KEYS} ${SEARCH_DIR}"
 __ConductFirstSearch && {
     __PrintSearchResult
     # Enter the interactive search mode.
