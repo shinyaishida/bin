@@ -92,17 +92,10 @@ function __GetFirstAvailableCommand() {
   echo -n ${first}
 }
 
-readonly steditor=$(__GetFirstAvailableCommand awk gawk)
-case ${steditor} in
-  awk|gawk)
-    function __GetHitCount() {
-      wc -l ${TMP_FILE1} | ${steditor} '{ print $1 }'
-    };;
-  *)
-    function __GetHitCount() {
-      wc -l ${TMP_FILE1} | sed "s/^.*\([0-9]+\).*$/\1/1"
-    };;
-esac
+function __GetHitCount() {
+  local -r output=($(wc -l ${TMP_FILE1}))
+  echo ${output[0]}
+}
 
 function __PromptInput() {
   echo -en "\033[33m$1: \033[m" >&2 && read INPUT && [ "$INPUT" ]
@@ -166,24 +159,26 @@ function __RerunSearches() {
   done
 }
 
-readonly printer=$(__GetFirstAvailableCommand more less)
-case ${printer} in
+case $(__GetFirstAvailableCommand more less) in
   more)
-    function __PrintSearchResult() {
-      [ $(__GetHitCount) -gt 0 ] && cat -n ${TMP_FILE1} | more
-      echo "$(__GetHitCount) line(s) matched"
+    function __PrintFoundPatterns() {
+      more -N ${TMP_FILE1}
     };;
   less)
-    function __PrintSearchResult() {
-      [ $(__GetHitCount) -gt 0 ] && less -N ${TMP_FILE1}
-      echo "$(__GetHitCount) line(s) matched"
+    function __PrintFoundPatterns() {
+      less -N ${TMP_FILE1}
     };;
   *)
-    function __PrintSearchResult() {
-      [ $(__GetHitCount) -gt 0 ] && cat -n ${TMP_FILE1}
-      echo "$(__GetHitCount) line(s) matched"
+    function __PrintFoundPatterns() {
+      cat -n ${TMP_FILE1}
     };;
 esac
+
+function __PrintSearchResult() {
+  local -r count=$(__GetHitCount)
+  [ ${count} -gt 0 ] && __PrintFoundPatterns
+  echo -e "\033[32m${count} line(s) matched\033[m"
+}
 
 function __PrintCommandList() {
   local -r IFS=''
