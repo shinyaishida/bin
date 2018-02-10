@@ -42,7 +42,6 @@ QUICK_UNDO=
 function __CleanUp() {
     rm -f ${TMP_PREFIX}* &>/dev/null
 }
-readonly -f __CleanUp
 
 trap "__CleanUp" 1 2 3 15
 
@@ -69,7 +68,6 @@ Note:
     - Multiple '-x' and '-X' options are accepted.
 EOF
 }
-readonly -f __PrintUsage
 
 
 ##
@@ -100,16 +98,6 @@ EOF
 	    exit 127;;
     esac
 }
-readonly -f __ExitWith
-
-
-##
-## Functions
-##
-
-#
-# Utility functions
-#
 
 steditor_cands=(awk gawk)
 steditor=
@@ -126,12 +114,10 @@ case ${steditor} in
 	    wc -l ${TMP_FILE1} | sed "s/^.*\([0-9]+\).*$/\1/1"
 	};;
 esac
-readonly -f __GetHitCount
 
 function __PromptInput() {
     printf "$1" >&2 && read INPUT && [ "$INPUT" ]
 }
-readonly -f __PromptInput
 
 function __SearchEntries() {
     __PromptInput "pattern:" && \
@@ -141,7 +127,6 @@ function __SearchEntries() {
       QUICK_UNDO=yes && \
       ${GREP} ${search_opt} ${TMP_FILE2} > ${TMP_FILE1}
 }
-readonly -f __SearchEntries
 
 function __SelectEntry() {
     local -r hit_count=$(__GetHitCount)
@@ -151,17 +136,14 @@ function __SelectEntry() {
       [ ${INPUT} -le ${hit_count} ] && \
       head -${INPUT} ${TMP_FILE1} | tail -1
 }
-readonly -f __SelectEntry
 
 function __GetCaseSensitivity() {
     [ "${IGN_CASE}" ] && echo "case-ignoring" || echo "case-sensitive"
 }
-readonly -f __GetCaseSensitivity
 
 function __ToggleCaseSensitivity() {
     IGN_CASE=$([ "${IGN_CASE}" ] && echo "" || echo "${IGN_CASE_FLAG}")
 }
-readonly -f __ToggleCaseSensitivity
 
 function __SetSearchDirectory() {
     SEARCH_DIR=${SEARCH_DIR:-$1}
@@ -185,7 +167,6 @@ function __ConductFirstSearch() {
     ${GREP} ${INIT_SEARCH} ${SEARCH_DIR} > ${TMP_INIT} || __ExitWith 1
     cat ${TMP_INIT} > ${TMP_FILE1}
 }
-readonly -f __ConductFirstSearch
 
 function __RerunSearches() {
     local i=0
@@ -219,13 +200,11 @@ case ${printer} in
 	    echo "$(__GetHitCount) line(s) matched"
 	};;
 esac
-readonly -f __PrintSearchResult
 
 function __PrintCommandList() {
     local -r IFS=''
     (eval echo $(echo ${CMD_HELP} | tr '\n' @)) | tr @ '\n'
 }
-readonly -f __PrintCommandList
 
 
 #
@@ -260,7 +239,6 @@ readonly -f __PrintCommandList
 function PrintSearchResult() {
     __PrintSearchResult
 }
-readonly -f PrintSearchResult
 
 #
 # @func SearchEntriesContainingPattern
@@ -271,7 +249,6 @@ function SearchEntriesContainingPattern() {
     __SearchEntries
     __PrintSearchResult
 }
-readonly -f SearchEntriesContainingPattern
 
 #
 # @func SearchEntriesNotContainingPattern
@@ -282,7 +259,6 @@ function SearchEntriesNotContainingPattern() {
     __SearchEntries -v
     __PrintSearchResult
 }
-readonly -f SearchEntriesNotContainingPattern
 
 #
 # @func UndoSearch
@@ -302,7 +278,6 @@ function UndoSearch() {
     fi
     __PrintSearchResult
 }
-readonly -f UndoSearch
 
 #
 # @func RefreshSearch
@@ -313,7 +288,6 @@ function RefreshSearch() {
     __ConductFirstSearch && __RerunSearches
     __PrintSearchResult
 }
-readonly -f RefreshSearch
 
 #
 # @func ViewInFile
@@ -345,7 +319,6 @@ case ${viewer} in
 		tail -$((${range} * 2 + 1))
 	};;
 esac
-readonly -f ViewInFile
 
 #
 # @func EditFile
@@ -368,7 +341,6 @@ case ${editor} in
 	    echo "cannot use this function in your environment"
 	};;
 esac
-readonly -f EditFile
 
 #
 # @func ListFileNames
@@ -378,7 +350,6 @@ readonly -f EditFile
 function ListFileNames() {
     cut -d : -f 1 ${TMP_FILE1} | sort -u
 }
-readonly -f ListFileNames
 
 #
 # @func SaveSearchResult
@@ -398,7 +369,6 @@ readonly SaveSearchResult
 function ToggleCaseSensitivity() {
     __ToggleCaseSensitivity && __GetCaseSensitivity
 }
-readonly -f ToggleCaseSensitivity
 
 #
 # @func ShowHelp
@@ -408,7 +378,6 @@ readonly -f ToggleCaseSensitivity
 function ShowHelp() {
     __PrintCommandList
 }
-readonly -f ShowHelp
 
 #
 # @func Quit
@@ -418,7 +387,6 @@ readonly -f ShowHelp
 function Quit() {
     __ExitWith 0
 }
-readonly -f Quit
 
 
 #
@@ -448,7 +416,6 @@ function __BuildCommandLists() {
     readonly CMD_MAP=${CMD_MAP}
     readonly CMD_HELP=${CMD_HELP}
 }
-readonly -f __BuildCommandLists
 
 function __GetCommandFunction() {
     local IFS=''
@@ -465,7 +432,6 @@ function __ExecuteCommand() {
 	fi
     }
 }
-readonly -f __ExecuteCommand
 
 function __SearchInteractively() {
     while [ x = x ]; do
