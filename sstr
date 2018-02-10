@@ -22,11 +22,9 @@ readonly GREP=$(which grep)
 readonly IGN_CASE_FLAG='-i'
 
 # Fixed during initalization
-SEARCH_DIR=""
+SEARCH_DIR="${DEFAULT_DIR}"
 SEARCH_PATTERNS=
-EXCLUDE_FILES=
-EXCLUDE_DIRS=
-INIT_SEARCH=
+INIT_SEARCH='-Inr'
 CMD_MAP=
 CMD_HELP=
 
@@ -165,12 +163,16 @@ function __ToggleCaseSensitivity() {
 }
 readonly -f __ToggleCaseSensitivity
 
+function __SetSearchDirectory() {
+    SEARCH_DIR=${SEARCH_DIR:-$1}
+}
+
 function __ExcludeFiles() {
-    EXCLUDE_FILES=${EXCLUDE_FILES}${1:+ --exclude=$1}
+    INIT_SEARCH=${INIT_SEARCH}${1:+ --exclude=$1}
 }
 
 function __ExcludeDirectories() {
-    EXCLUDE_DIRS=${EXCLUDE_DIRS}${1:+ --exclude-dir=${1}}
+    INIT_SEARCH=${INIT_SEARCH}${1:+ --exclude-dir=${1}}
 }
 
 function __SetSearchPatterns() {
@@ -180,7 +182,7 @@ function __SetSearchPatterns() {
 }
 
 function __ConductFirstSearch() {
-    ${GREP} ${INIT_SEARCH} > ${TMP_INIT} || __ExitWith 1
+    ${GREP} ${INIT_SEARCH} ${SEARCH_DIR} > ${TMP_INIT} || __ExitWith 1
     cat ${TMP_INIT} > ${TMP_FILE1}
 }
 readonly -f __ConductFirstSearch
@@ -465,21 +467,23 @@ function __ExecuteCommand() {
 }
 readonly -f __ExecuteCommand
 
+function __SearchInteractively() {
+    while [ x = x ]; do
+	__ExecuteCommand
+    done
+}
 
 ##
 ## Main routine
 ##
 
-# Initialize the search process.
 __BuildCommandLists || __ExitWith 2
-
-# Parse the command line arguments.
 while getopts "cd:x:X:" flag; do
     case $flag in
 	c)
 	    __ToggleCaseSensitivity;;
 	d)
-	    SEARCH_DIR=$OPTARG;;
+	    __SetSearchDirectory $OPTARG;;
 	x)
 	    __ExcludeFiles $OPTARG;;
 	X)
@@ -490,16 +494,13 @@ while getopts "cd:x:X:" flag; do
     esac
 done
 shift $(($OPTIND - 1))
-readonly SEARCH_DIR=${SEARCH_DIR:-${DEFAULT_DIR}}
+__SetSearchPatterns $@
 [ -d ${SEARCH_DIR} ] || __ExitWith 3
-__SetSearchPatterns $@ && [ "${SEARCH_PATTERNS-}" ] || __ExitWith 4
+[ "${SEARCH_PATTERNS-}" ] || __ExitWith 4
 
 # Execute the first search.
-readonly INIT_SEARCH="-Inr ${IGN_CASE} ${EXCLUDE_FILES} ${EXCLUDE_DIRS} ${SEARCH_PATTERNS} ${SEARCH_DIR}"
+readonly INIT_SEARCH=${INIT_SEARCH}" ${IGN_CASE} ${SEARCH_PATTERNS}"
 __ConductFirstSearch && {
     __PrintSearchResult
-    # Enter the interactive search mode.
-    while [ x = x ]; do
-	__ExecuteCommand
-    done
+    __SearchInteractively
 }
