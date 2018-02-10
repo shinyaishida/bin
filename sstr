@@ -17,7 +17,6 @@ readonly TMP_PREFIX="/tmp/${MY_BASE}.$$"
 readonly TMP_INIT="${TMP_PREFIX}_init"
 readonly TMP_FILE1="${TMP_PREFIX}_1"
 readonly TMP_FILE2="${TMP_PREFIX}_2"
-readonly CMD_PROMPT="command (hit 'h' for help)"
 readonly GREP=$(which grep)
 readonly IGN_CASE_FLAG='-i'
 
@@ -68,7 +67,6 @@ failed in initialization
 directory '${SEARCH_DIR}' not found
 no patterns specified
 failed in first search
-command not found
 EOF
 		       ))
   __CleanUp
@@ -237,16 +235,16 @@ function SearchEntriesNotContainingPattern() {
 # @key u
 # @desc undo last search
 function UndoSearch() {
-  if [ ${#SEARCH_HISTORY[@]} -gt 0 ]; then
+  [ ${#SEARCH_HISTORY[@]} -gt 0 ] && {
     unset SEARCH_HISTORY[$((${#SEARCH_HISTORY[@]} - 1))]
-    if [ "${QUICK_UNDO-}" ]; then
+    [ "${QUICK_UNDO-}" ] && {
       [ -f ${TMP_FILE2} ] && cat ${TMP_FILE2} > ${TMP_FILE1}
       QUICK_UNDO=
-    else
+    } || {
       cat ${TMP_INIT} > ${TMP_FILE1}
       __RerunSearches
-    fi
-  fi
+    }
+  }
   __PrintSearchResult
 }
 
@@ -369,13 +367,9 @@ function __GetCommandFunction() {
 }
 
 function __ExecuteCommand() {
-  __PromptInput "${CMD_PROMPT}" && {
-    local -r cmd_func=$(__GetCommandFunction) || __ExitWith 6
-    if [ "${cmd_func}" ]; then
-      ${cmd_func}
-    else
-      __PrintCommandList
-    fi
+  __PromptInput "command" && {
+    local -r cmd_func=$(__GetCommandFunction)
+    [ "${cmd_func}" ] && ${cmd_func} || __PrintCommandList
   }
 }
 
