@@ -17,7 +17,7 @@ readonly TMP_PREFIX="/tmp/${MY_BASE}.$$"
 readonly TMP_INIT="${TMP_PREFIX}_init"
 readonly TMP_FILE1="${TMP_PREFIX}_1"
 readonly TMP_FILE2="${TMP_PREFIX}_2"
-readonly CMD_PROMPT="command (hit 'h' for help): "
+readonly CMD_PROMPT="command (hit 'h' for help)"
 readonly GREP=$(which grep)
 readonly IGN_CASE_FLAG='-i'
 
@@ -76,10 +76,10 @@ EOF
     0)
       exit 0;;
     [1-9])
-      echo "${err_msgs[$1]}" 1>&2
+      echo -e "\033[31mERROR:\033[m ${err_msgs[$1]}" 1>&2
       exit $1;;
     *)
-      echo "ERROR: unexpected error" 1>&2
+      echo -e "\033[31mERROR:\033[m unexpected error" 1>&2
       exit 127;;
   esac
 }
@@ -105,11 +105,11 @@ case ${steditor} in
 esac
 
 function __PromptInput() {
-  printf "$1" >&2 && read INPUT && [ "$INPUT" ]
+  echo -en "\033[33m$1: \033[m" >&2 && read INPUT && [ "$INPUT" ]
 }
 
 function __SearchEntries() {
-  __PromptInput "pattern:" && \
+  __PromptInput "pattern" && \
     local -r search_opt="${IGN_CASE} $@ ${INPUT}" && \
     SEARCH_HISTORY[${#SEARCH_HISTORY[@]}]="${search_opt}" && \
     cat ${TMP_FILE1} > ${TMP_FILE2} && \
@@ -120,7 +120,7 @@ function __SearchEntries() {
 function __SelectEntry() {
   local -r hit_count=$(__GetHitCount)
   [ ${hit_count} -gt 0 ] && \
-    __PromptInput "number (1-${hit_count}):" && \
+    __PromptInput "number (1-${hit_count})" && \
     [[ ${INPUT} =~ ^[1-9][0-9]*$ ]] && \
     [ ${INPUT} -le ${hit_count} ] && \
     head -${INPUT} ${TMP_FILE1} | tail -1
@@ -315,7 +315,7 @@ function ListFileNames() {
 # @key s
 # @desc save current result in a file '('overwritten')'
 function SaveSearchResult() {
-  __PromptInput "file:" && cat ${TMP_FILE1} > ${INPUT}
+  __PromptInput "file" && cat ${TMP_FILE1} > ${INPUT}
 }
 readonly SaveSearchResult
 
