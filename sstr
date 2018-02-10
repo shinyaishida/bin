@@ -10,10 +10,6 @@
 # result interactively.
 #
 
-##
-## Global variables
-##
-
 readonly ME=$0
 readonly MY_BASE=$(basename ${ME})
 readonly DEFAULT_DIR=$(pwd)
@@ -27,7 +23,7 @@ readonly IGN_CASE_FLAG='-i'
 
 # Fixed during initalization
 SEARCH_DIR=""
-SEARCH_KEYS=
+SEARCH_PATTERNS=
 INIT_SEARCH=
 CMD_MAP=
 CMD_HELP=
@@ -82,7 +78,7 @@ function __ExitWith() {
 no matches
 failed in initialization
 directory '${SEARCH_DIR}' not found
-no key specified
+no patterns specified
 failed in first search
 command not found
 EOF
@@ -133,7 +129,7 @@ function __PromptInput() {
 readonly -f __PromptInput
 
 function __SearchEntries() {
-    __PromptInput "key:" && \
+    __PromptInput "pattern:" && \
       local -r search_opt="${IGN_CASE} $@ ${INPUT}" && \
       SEARCH_HISTORY[${#SEARCH_HISTORY[@]}]="${search_opt}" && \
       cat ${TMP_FILE1} > ${TMP_FILE2} && \
@@ -178,10 +174,10 @@ function __ExcludeDirectories() {
     done
 }
 
-function __SetSearchKeys() {
-    SEARCH_KEYS=
-    for key in $@; do
-	SEARCH_KEYS=${SEARCH_KEYS}${key:+ -e ${key}}
+function __SetSearchPatterns() {
+    SEARCH_PATTERNS=
+    for pattern in $@; do
+	SEARCH_PATTERNS=${SEARCH_PATTERNS}${pattern:+ -e ${pattern}}
     done
 }
 
@@ -267,26 +263,26 @@ function PrintSearchResult() {
 readonly -f PrintSearchResult
 
 #
-# @func SearchEntriesContainingKey
+# @func SearchEntriesContainingPattern
 # @key m
-# @desc get lines containing substring matching a specified key
+# @desc get lines containing substring matching a specified pattern
 #
-function SearchEntriesContainingKey() {
+function SearchEntriesContainingPattern() {
     __SearchEntries
     __PrintSearchResult
 }
-readonly -f SearchEntriesContainingKey
+readonly -f SearchEntriesContainingPattern
 
 #
-# @func SearchEntriesNotContainingKey
+# @func SearchEntriesNotContainingPattern
 # @key n
-# @desc get lines not containing substring matching a specified key
+# @desc get lines not containing substring matching a specified pattern
 #
-function SearchEntriesNotContainingKey() {
+function SearchEntriesNotContainingPattern() {
     __SearchEntries -v
     __PrintSearchResult
 }
-readonly -f SearchEntriesNotContainingKey
+readonly -f SearchEntriesNotContainingPattern
 
 #
 # @func UndoSearch
@@ -498,10 +494,10 @@ done
 shift $(($OPTIND - 1))
 readonly SEARCH_DIR=${SEARCH_DIR:-${DEFAULT_DIR}}
 [ -d ${SEARCH_DIR} ] || __ExitWith 3
-__SetSearchKeys $@ && [ "${SEARCH_KEYS-}" ] || __ExitWith 4
+__SetSearchPatterns $@ && [ "${SEARCH_PATTERNS-}" ] || __ExitWith 4
 
 # Execute the first search.
-readonly INIT_SEARCH="-Inr ${IGN_CASE} ${EXCLUDE_FILES} ${EXCLUDE_DIRS} ${SEARCH_KEYS} ${SEARCH_DIR}"
+readonly INIT_SEARCH="-Inr ${IGN_CASE} ${EXCLUDE_FILES} ${EXCLUDE_DIRS} ${SEARCH_PATTERNS} ${SEARCH_DIR}"
 __ConductFirstSearch && {
     __PrintSearchResult
     # Enter the interactive search mode.
