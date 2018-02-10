@@ -24,6 +24,8 @@ readonly IGN_CASE_FLAG='-i'
 # Fixed during initalization
 SEARCH_DIR=""
 SEARCH_PATTERNS=
+EXCLUDE_FILES=
+EXCLUDE_DIRS=
 INIT_SEARCH=
 CMD_MAP=
 CMD_HELP=
@@ -54,14 +56,19 @@ trap "__CleanUp" 1 2 3 15
 function __PrintUsage() {
     cat <<EOF
 Usage:
-  ${MY_BASE} [-c] [-d <directory>] [-x <file>[,<file>]..] [-X <directory>[,<directory>]..] <pattern>[ <pattern>]..
+    ${MY_BASE} [options] <pattern>[ <pattern> ...]
+
+Options:
+    -c          case-sensitive search
+    -d dir      search pattern(s) in the directory
+    -x file     exclude file from pattern search
+    -X dir      skip pattern search in the directory
+
 Note:
-  - If multiple patterns are specified, ${MY_BASE} picks lines containing any of the patterns.
-  - String search is not case-sensitive. Use '-c' for case-sensitive search.
-  - Binary files are out of the search.
-  - If '-d' option is omitted, the current directory is used.
-  - '-x' option accepts one or more files to be excluded from search.
-  - '-X' option accepts one or more directories to be excluded from search.
+    - If multiple patterns are specified, ${MY_BASE} picks lines containing any
+      of the patterns.
+    - Binary files are ignored.
+    - Multiple '-x' and '-X' options are accepted.
 EOF
 }
 readonly -f __PrintUsage
@@ -159,23 +166,14 @@ function __ToggleCaseSensitivity() {
 readonly -f __ToggleCaseSensitivity
 
 function __ExcludeFiles() {
-    local -r files=${1//,/ }
-    EXCLUDE_FILES=
-    for file in ${files[@]}; do
-	EXCLUDE_FILES=${EXCLUDE_FILES}${file:+ --exclude=${file}}
-    done
+    EXCLUDE_FILES=${EXCLUDE_FILES}${1:+ --exclude=$1}
 }
 
 function __ExcludeDirectories() {
-    local -r dirs=${1//,/ }
-    EXCLUDE_DIRS=
-    for	dir in ${dirs[@]}; do
-	EXCLUDE_DIRS=${EXCLUDE_DIRS}${dir:+ --exclude-dir=${dir}}
-    done
+    EXCLUDE_DIRS=${EXCLUDE_DIRS}${1:+ --exclude-dir=${1}}
 }
 
 function __SetSearchPatterns() {
-    SEARCH_PATTERNS=
     for pattern in $@; do
 	SEARCH_PATTERNS=${SEARCH_PATTERNS}${pattern:+ -e ${pattern}}
     done
