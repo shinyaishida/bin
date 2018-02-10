@@ -24,7 +24,7 @@ readonly IGN_CASE_FLAG='-i'
 # Fixed during initalization
 SEARCH_DIR="${DEFAULT_DIR}"
 SEARCH_PATTERNS=
-INIT_SEARCH='-Inr'
+INIT_SEARCH_OPTS='-Inr'
 CMD_MAP=
 CMD_HELP=
 
@@ -34,15 +34,14 @@ INPUT=
 SEARCH_HISTORY=()
 QUICK_UNDO=
 
-
 function __CleanUp() {
-    rm -f ${TMP_PREFIX}* &>/dev/null
+  rm -f ${TMP_PREFIX}* &>/dev/null
 }
 
 trap "__CleanUp" 1 2 3 15
 
 function __PrintUsage() {
-    cat <<EOF
+  cat <<EOF
 Usage:
     ${MY_BASE} [options] <pattern>[ <pattern> ...]
 
@@ -61,9 +60,9 @@ EOF
 }
 
 function __ExitWith() {
-    local -r IFS='@'
-    # Indices of this array are corresponding to exit status values.
-    local -r err_msgs=("" $(cat <<EOF | tr '\n' "${IFS}"
+  local -r IFS='@'
+  # Indices of this array are corresponding to exit status values.
+  local -r err_msgs=("" $(cat <<EOF | tr '\n' "${IFS}"
 no matches
 failed in initialization
 directory '${SEARCH_DIR}' not found
@@ -71,124 +70,124 @@ no patterns specified
 failed in first search
 command not found
 EOF
-    ))
-    __CleanUp
-    case "$1" in
-	0)
-	    exit 0;;
-	[1-9])
-	    echo "${err_msgs[$1]}" 1>&2
-	    exit $1;;
-	*)
-	    echo "ERROR: unexpected error" 1>&2
-	    exit 127;;
-    esac
+		       ))
+  __CleanUp
+  case "$1" in
+    0)
+      exit 0;;
+    [1-9])
+      echo "${err_msgs[$1]}" 1>&2
+      exit $1;;
+    *)
+      echo "ERROR: unexpected error" 1>&2
+      exit 127;;
+  esac
 }
 
 function __GetFirstAvailableCommand() {
-    local first=
-    for c in $@; do
-	which ${c} &>/dev/null && first=${c} && break
-    done
-    echo -n ${first}
+  local first=
+  for c in $@; do
+    which ${c} &>/dev/null && first=${c} && break
+  done
+  echo -n ${first}
 }
 
 readonly steditor=$(__GetFirstAvailableCommand awk gawk)
 case ${steditor} in
-    awk|gawk)
-	function __GetHitCount() {
-	    wc -l ${TMP_FILE1} | ${steditor} '{ print $1 }'
-	};;
-    *)
-	function __GetHitCount() {
-	    wc -l ${TMP_FILE1} | sed "s/^.*\([0-9]+\).*$/\1/1"
-	};;
+  awk|gawk)
+    function __GetHitCount() {
+      wc -l ${TMP_FILE1} | ${steditor} '{ print $1 }'
+    };;
+  *)
+    function __GetHitCount() {
+      wc -l ${TMP_FILE1} | sed "s/^.*\([0-9]+\).*$/\1/1"
+    };;
 esac
 
 function __PromptInput() {
-    printf "$1" >&2 && read INPUT && [ "$INPUT" ]
+  printf "$1" >&2 && read INPUT && [ "$INPUT" ]
 }
 
 function __SearchEntries() {
-    __PromptInput "pattern:" && \
-      local -r search_opt="${IGN_CASE} $@ ${INPUT}" && \
-      SEARCH_HISTORY[${#SEARCH_HISTORY[@]}]="${search_opt}" && \
-      cat ${TMP_FILE1} > ${TMP_FILE2} && \
-      QUICK_UNDO=yes && \
-      ${GREP} ${search_opt} ${TMP_FILE2} > ${TMP_FILE1}
+  __PromptInput "pattern:" && \
+    local -r search_opt="${IGN_CASE} $@ ${INPUT}" && \
+    SEARCH_HISTORY[${#SEARCH_HISTORY[@]}]="${search_opt}" && \
+    cat ${TMP_FILE1} > ${TMP_FILE2} && \
+    QUICK_UNDO=yes && \
+    ${GREP} ${search_opt} ${TMP_FILE2} > ${TMP_FILE1}
 }
 
 function __SelectEntry() {
-    local -r hit_count=$(__GetHitCount)
-    [ ${hit_count} -gt 0 ] && \
-      __PromptInput "number (1-${hit_count}):" && \
-      [[ ${INPUT} =~ ^[1-9][0-9]*$ ]] && \
-      [ ${INPUT} -le ${hit_count} ] && \
-      head -${INPUT} ${TMP_FILE1} | tail -1
+  local -r hit_count=$(__GetHitCount)
+  [ ${hit_count} -gt 0 ] && \
+    __PromptInput "number (1-${hit_count}):" && \
+    [[ ${INPUT} =~ ^[1-9][0-9]*$ ]] && \
+    [ ${INPUT} -le ${hit_count} ] && \
+    head -${INPUT} ${TMP_FILE1} | tail -1
 }
 
 function __GetCaseSensitivity() {
-    [ "${IGN_CASE}" ] && echo "case-ignoring" || echo "case-sensitive"
+  [ "${IGN_CASE}" ] && echo "case-ignoring" || echo "case-sensitive"
 }
 
 function __ToggleCaseSensitivity() {
-    IGN_CASE=$([ "${IGN_CASE}" ] && echo "" || echo "${IGN_CASE_FLAG}")
+  IGN_CASE=$([ "${IGN_CASE}" ] && echo "" || echo "${IGN_CASE_FLAG}")
 }
 
 function __SetSearchDirectory() {
-    SEARCH_DIR=${SEARCH_DIR:-$1}
+  SEARCH_DIR=${SEARCH_DIR:-$1}
 }
 
 function __ExcludeFiles() {
-    INIT_SEARCH=${INIT_SEARCH}${1:+ --exclude=$1}
+  INIT_SEARCH_OPTS=${INIT_SEARCH_OPTS}${1:+ --exclude=$1}
 }
 
 function __ExcludeDirectories() {
-    INIT_SEARCH=${INIT_SEARCH}${1:+ --exclude-dir=${1}}
+  INIT_SEARCH_OPTS=${INIT_SEARCH_OPTS}${1:+ --exclude-dir=${1}}
 }
 
 function __SetSearchPatterns() {
-    for pattern in $@; do
-	SEARCH_PATTERNS=${SEARCH_PATTERNS}${pattern:+ -e ${pattern}}
-    done
+  for pattern in $@; do
+    SEARCH_PATTERNS=${SEARCH_PATTERNS}${pattern:+ -e ${pattern}}
+  done
 }
 
 function __ConductFirstSearch() {
-    ${GREP} ${INIT_SEARCH} ${SEARCH_DIR} > ${TMP_INIT} || __ExitWith 1
-    cat ${TMP_INIT} > ${TMP_FILE1}
+  ${GREP} ${INIT_SEARCH_OPTS} ${SEARCH_DIR} > ${TMP_INIT} || __ExitWith 1
+  cat ${TMP_INIT} > ${TMP_FILE1}
 }
 
 function __RerunSearches() {
-    local i=0
-    while [ $i -lt ${#SEARCH_HISTORY[@]} ]; do
-	cat ${TMP_FILE1} > ${TMP_FILE2}
-	${GREP} ${SEARCH_HISTORY[$i]} ${TMP_FILE2} > ${TMP_FILE1}
-	((i+=1))
-    done
+  local i=0
+  while [ $i -lt ${#SEARCH_HISTORY[@]} ]; do
+    cat ${TMP_FILE1} > ${TMP_FILE2}
+    ${GREP} ${SEARCH_HISTORY[$i]} ${TMP_FILE2} > ${TMP_FILE1}
+    ((i+=1))
+  done
 }
 
 readonly printer=$(__GetFirstAvailableCommand more less)
 case ${printer} in
-    more)
-	function __PrintSearchResult() {
-	    [ $(__GetHitCount) -gt 0 ] && cat -n ${TMP_FILE1} | more
-	    echo "$(__GetHitCount) line(s) matched"
-	};;
-    less)
-	function __PrintSearchResult() {
-	    [ $(__GetHitCount) -gt 0 ] && less -N ${TMP_FILE1}
-	    echo "$(__GetHitCount) line(s) matched"
-	};;
-    *)
-	function __PrintSearchResult() {
-	    [ $(__GetHitCount) -gt 0 ] && cat -n ${TMP_FILE1}
-	    echo "$(__GetHitCount) line(s) matched"
-	};;
+  more)
+    function __PrintSearchResult() {
+      [ $(__GetHitCount) -gt 0 ] && cat -n ${TMP_FILE1} | more
+      echo "$(__GetHitCount) line(s) matched"
+    };;
+  less)
+    function __PrintSearchResult() {
+      [ $(__GetHitCount) -gt 0 ] && less -N ${TMP_FILE1}
+      echo "$(__GetHitCount) line(s) matched"
+    };;
+  *)
+    function __PrintSearchResult() {
+      [ $(__GetHitCount) -gt 0 ] && cat -n ${TMP_FILE1}
+      echo "$(__GetHitCount) line(s) matched"
+    };;
 esac
 
 function __PrintCommandList() {
-    local -r IFS=''
-    (eval echo $(echo ${CMD_HELP} | tr '\n' @)) | tr @ '\n'
+  local -r IFS=''
+  (eval echo $(echo ${CMD_HELP} | tr '\n' @)) | tr @ '\n'
 }
 
 
@@ -216,204 +215,179 @@ function __PrintCommandList() {
 # - A tag line must start with '#'.
 # - Only spaces, ' ', may be between the '#' and a tag.
 
-#
 # @func PrintSearchResult
 # @key p
 # @desc print search result
-#
 function PrintSearchResult() {
-    __PrintSearchResult
+  __PrintSearchResult
 }
 
-#
 # @func SearchEntriesContainingPattern
 # @key m
 # @desc get lines containing substring matching a specified pattern
-#
 function SearchEntriesContainingPattern() {
-    __SearchEntries
-    __PrintSearchResult
+  __SearchEntries
+  __PrintSearchResult
 }
 
-#
 # @func SearchEntriesNotContainingPattern
 # @key n
 # @desc get lines not containing substring matching a specified pattern
-#
 function SearchEntriesNotContainingPattern() {
-    __SearchEntries -v
-    __PrintSearchResult
+  __SearchEntries -v
+  __PrintSearchResult
 }
 
-#
 # @func UndoSearch
 # @key u
 # @desc undo last search
-#
 function UndoSearch() {
-    if [ ${#SEARCH_HISTORY[@]} -gt 0 ]; then
-      unset SEARCH_HISTORY[$((${#SEARCH_HISTORY[@]} - 1))]
-      if [ "${QUICK_UNDO-}" ]; then
-	[ -f ${TMP_FILE2} ] && cat ${TMP_FILE2} > ${TMP_FILE1}
-	QUICK_UNDO=
-      else
-	  cat ${TMP_INIT} > ${TMP_FILE1}
-	  __RerunSearches
-      fi
+  if [ ${#SEARCH_HISTORY[@]} -gt 0 ]; then
+    unset SEARCH_HISTORY[$((${#SEARCH_HISTORY[@]} - 1))]
+    if [ "${QUICK_UNDO-}" ]; then
+      [ -f ${TMP_FILE2} ] && cat ${TMP_FILE2} > ${TMP_FILE1}
+      QUICK_UNDO=
+    else
+      cat ${TMP_INIT} > ${TMP_FILE1}
+      __RerunSearches
     fi
-    __PrintSearchResult
+  fi
+  __PrintSearchResult
 }
 
-#
 # @func RefreshSearch
 # @key r
 # @desc refresh search result
-#
 function RefreshSearch() {
-    __ConductFirstSearch && __RerunSearches
-    __PrintSearchResult
+  __ConductFirstSearch && __RerunSearches
+  __PrintSearchResult
 }
 
-#
 # @func ViewInFile
 # @key v
 # @desc view a line with file viewer '('${viewer-not available}')'
-#
 readonly viewer=$(__GetFirstAvailableCommand less more)
 case ${viewer} in
-    less)
-	function ViewInFile() {
-	    read file_name line_num rest < <(__SelectEntry | tr ':' ' ') && \
-	      cat -n ${file_name} | less +${line_num}g
-	};;
-    more)
-	function ViewInFile() {
-	    read file_name line_num rest < <(__SelectEntry | tr ':' ' ') && \
-	      cat -n ${file_name} | more +${line_num}
-	};;
-    *)
-	function ViewInFile() {
-	    local -r range=10
-	    read file_name line_num rest < <(__SelectEntry | tr ':' ' ') && \
-	      cat -n ${file_name} | \
-		head -$((${line_num} + ${range})) | \
-		tail -$((${range} * 2 + 1))
-	};;
+  less)
+    function ViewInFile() {
+      read file_name line_num rest < <(__SelectEntry | tr ':' ' ') && \
+	cat -n ${file_name} | less +${line_num}
+    };;
+  more)
+    function ViewInFile() {
+      read file_name line_num rest < <(__SelectEntry | tr ':' ' ') && \
+	cat -n ${file_name} | more +${line_num}
+    };;
+  *)
+    function ViewInFile() {
+      local -r range=10
+      read file_name line_num rest < <(__SelectEntry | tr ':' ' ') && \
+	cat -n ${file_name} | \
+	  head -$((${line_num} + ${range})) | \
+	  tail -$((${range} * 2 + 1))
+    };;
 esac
 
-#
 # @func EditFile
 # @key e
 # @desc edit a line with text editor '('${editor-not available}')'
-#
 readonly editor=$(__GetFirstAvailableCommand vi vim)
 case ${editor} in
-    vi|vim)
-	function EditFile() {
-	    read file_name line_num rest < <(__SelectEntry | tr ':' ' ') && \
-	      ${editor} +${line_num} ${file_name}
-	};;
-    *)
-	function EditFile() {
-	    echo "cannot use this function in your environment"
-	};;
+  vi|vim)
+    function EditFile() {
+      read file_name line_num rest < <(__SelectEntry | tr ':' ' ') && \
+	${editor} +${line_num} ${file_name}
+    };;
+  *)
+    function EditFile() {
+      echo "cannot use this function in your environment"
+    };;
 esac
 
-#
 # @func ListFileNames
 # @key l
 # @desc list file names hit in current search
-#
 function ListFileNames() {
-    cut -d : -f 1 ${TMP_FILE1} | sort -u
+  cut -d : -f 1 ${TMP_FILE1} | sort -u
 }
 
-#
 # @func SaveSearchResult
 # @key s
 # @desc save current result in a file '('overwritten')'
-#
 function SaveSearchResult() {
-    __PromptInput "file:" && cat ${TMP_FILE1} > ${INPUT}
+  __PromptInput "file:" && cat ${TMP_FILE1} > ${INPUT}
 }
 readonly SaveSearchResult
 
-#
 # @func ToggleCaseSensitivity
 # @key c
 # @desc toggle case-sensitivity of search '('$(__GetCaseSensitivity) now')'
-#
 function ToggleCaseSensitivity() {
-    __ToggleCaseSensitivity && __GetCaseSensitivity
+  __ToggleCaseSensitivity && __GetCaseSensitivity
 }
 
-#
 # @func ShowHelp
 # @key h
 # @desc show this help
-#
 function ShowHelp() {
-    __PrintCommandList
+  __PrintCommandList
 }
 
-#
 # @func Quit
 # @key q
 # @desc quit search
-#
 function Quit() {
-    __ExitWith 0
+  __ExitWith 0
 }
-
 
 #
 # Sub-routines
 #
 
-# Note: Using associative arrays seems a better choice to implement this
-# function.  However, it is supported from bash version 4.  The MacOS's default
-# bash (/bin/bash) is version 3.
 function __BuildCommandLists() {
-    local cmd_docs=$(${GREP} '^# *@' ${ME} | tr '\n' ' ')
-    cmd_docs=${cmd_docs//'# '/}
-    local IFS=$'\n'
-    cmd_docs=(${cmd_docs//@func /$'\n'})
-    IFS=' '
-    local i=0
-    while [ $i -lt ${#cmd_docs[@]} ]; do
-	read func_name at_key k at_desc desc < <(echo ${cmd_docs[$i]})
-	[ "${func_name}" -a "${desc}" ] && \
-	  [ "${at_key}" = "@key" -a "${at_desc}" = "@desc" ] && \
-	  [[ "${k}" =~ ^[a-z]$ ]] && {
-	      CMD_MAP="${CMD_MAP+${CMD_MAP}$'\n'}${k} ${func_name}"
-	      CMD_HELP="${CMD_HELP+${CMD_HELP}$'\n'}  ${k}: ${desc}"
-	  }
-	((i+=1))
-    done
-    readonly CMD_MAP=${CMD_MAP}
-    readonly CMD_HELP=${CMD_HELP}
+  # Note: Using associative arrays seems a better choice to implement this
+  # function.  However, it is supported from bash version 4.  The MacOS's
+  # default bash (/bin/bash) is version 3.
+  local cmd_docs=$(${GREP} '^# *@' ${ME} | tr '\n' ' ')
+  cmd_docs=${cmd_docs//'# '/}
+  local IFS=$'\n'
+  cmd_docs=(${cmd_docs//@func /$'\n'})
+  IFS=' '
+  local i=0
+  while [ $i -lt ${#cmd_docs[@]} ]; do
+    read func_name at_key k at_desc desc < <(echo ${cmd_docs[$i]})
+    [ "${func_name}" -a "${desc}" ] && \
+      [ "${at_key}" = "@key" -a "${at_desc}" = "@desc" ] && \
+      [[ "${k}" =~ ^[a-z]$ ]] && {
+	CMD_MAP="${CMD_MAP+${CMD_MAP}$'\n'}${k} ${func_name}"
+	CMD_HELP="${CMD_HELP+${CMD_HELP}$'\n'}  ${k}: ${desc}"
+      }
+    ((i+=1))
+  done
+  readonly CMD_MAP=${CMD_MAP}
+  readonly CMD_HELP=${CMD_HELP}
 }
 
 function __GetCommandFunction() {
-    local IFS=''
-    ${GREP} "^${INPUT}" <<< ${CMD_MAP} | cut -d ' ' -f 2
+  local IFS=''
+  ${GREP} "^${INPUT}" <<< ${CMD_MAP} | cut -d ' ' -f 2
 }
 
 function __ExecuteCommand() {
-    __PromptInput "${CMD_PROMPT}" && {
-	local -r cmd_func=$(__GetCommandFunction) || __ExitWith 6
-	if [ "${cmd_func}" ]; then
-	  ${cmd_func}
-	else
-	    __PrintCommandList
-	fi
-    }
+  __PromptInput "${CMD_PROMPT}" && {
+    local -r cmd_func=$(__GetCommandFunction) || __ExitWith 6
+    if [ "${cmd_func}" ]; then
+      ${cmd_func}
+    else
+      __PrintCommandList
+    fi
+  }
 }
 
 function __SearchInteractively() {
-    while [ x = x ]; do
-	__ExecuteCommand
-    done
+  while [ x = x ]; do
+    __ExecuteCommand
+  done
 }
 
 ##
@@ -422,28 +396,26 @@ function __SearchInteractively() {
 
 __BuildCommandLists || __ExitWith 2
 while getopts "cd:x:X:" flag; do
-    case $flag in
-	c)
-	    __ToggleCaseSensitivity;;
-	d)
-	    __SetSearchDirectory $OPTARG;;
-	x)
-	    __ExcludeFiles $OPTARG;;
-	X)
-	    __ExcludeDirectories $OPTARG;;
-	*)
-	    __PrintUsage
-	    __ExitWith 0;;
-    esac
+  case $flag in
+    c)
+      __ToggleCaseSensitivity;;
+    d)
+      __SetSearchDirectory $OPTARG;;
+    x)
+      __ExcludeFiles $OPTARG;;
+    X)
+      __ExcludeDirectories $OPTARG;;
+    *)
+      __PrintUsage
+      __ExitWith 0;;
+  esac
 done
 shift $(($OPTIND - 1))
 __SetSearchPatterns $@
 [ -d ${SEARCH_DIR} ] || __ExitWith 3
 [ "${SEARCH_PATTERNS-}" ] || __ExitWith 4
-
-# Execute the first search.
-readonly INIT_SEARCH=${INIT_SEARCH}" ${IGN_CASE} ${SEARCH_PATTERNS}"
+readonly INIT_SEARCH_OPTS=${INIT_SEARCH_OPTS}" ${IGN_CASE} ${SEARCH_PATTERNS}"
 __ConductFirstSearch && {
-    __PrintSearchResult
-    __SearchInteractively
+  __PrintSearchResult
+  __SearchInteractively
 }
