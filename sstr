@@ -35,20 +35,11 @@ SEARCH_HISTORY=()
 QUICK_UNDO=
 
 
-##
-## Signal traps
-##
-
 function __CleanUp() {
     rm -f ${TMP_PREFIX}* &>/dev/null
 }
 
 trap "__CleanUp" 1 2 3 15
-
-
-##
-## External specification
-##
 
 function __PrintUsage() {
     cat <<EOF
@@ -68,11 +59,6 @@ Note:
     - Multiple '-x' and '-X' options are accepted.
 EOF
 }
-
-
-##
-## Termination handling
-##
 
 function __ExitWith() {
     local -r IFS='@'
@@ -99,11 +85,15 @@ EOF
     esac
 }
 
-steditor_cands=(awk gawk)
-steditor=
-for c in ${steditor_cands[@]}; do
-    which $c &>/dev/null && steditor=$c && break
-done
+function __GetFirstAvailableCommand() {
+    local first=
+    for c in $@; do
+	which ${c} &>/dev/null && first=${c} && break
+    done
+    echo -n ${first}
+}
+
+readonly steditor=$(__GetFirstAvailableCommand awk gawk)
 case ${steditor} in
     awk|gawk)
 	function __GetHitCount() {
@@ -177,12 +167,7 @@ function __RerunSearches() {
     done
 }
 
-
-printer_cands=(more less)
-printer=
-for c in ${printer_cands[@]}; do
-    which $c &>/dev/null && readonly printer=$c && break
-done
+readonly printer=$(__GetFirstAvailableCommand more less)
 case ${printer} in
     more)
 	function __PrintSearchResult() {
@@ -294,28 +279,24 @@ function RefreshSearch() {
 # @key v
 # @desc view a line with file viewer '('${viewer-not available}')'
 #
-viewer_cands=(less more)
-viewer=
-for c in ${viewer_cands[@]}; do
-    which $c &>/dev/null && readonly viewer=$c && break
-done
+readonly viewer=$(__GetFirstAvailableCommand less more)
 case ${viewer} in
-    more)
-	function ViewInFile() {
-	    read file_name line_num rest < <(__SelectEntry | tr ':' ' ') && \
-	      cat -n ${file_name} | more +${line_num}
-	};;
     less)
 	function ViewInFile() {
 	    read file_name line_num rest < <(__SelectEntry | tr ':' ' ') && \
 	      cat -n ${file_name} | less +${line_num}g
+	};;
+    more)
+	function ViewInFile() {
+	    read file_name line_num rest < <(__SelectEntry | tr ':' ' ') && \
+	      cat -n ${file_name} | more +${line_num}
 	};;
     *)
 	function ViewInFile() {
 	    local -r range=10
 	    read file_name line_num rest < <(__SelectEntry | tr ':' ' ') && \
 	      cat -n ${file_name} | \
-		head -$((${line_num} + ${range}))  | \
+		head -$((${line_num} + ${range})) | \
 		tail -$((${range} * 2 + 1))
 	};;
 esac
@@ -325,11 +306,7 @@ esac
 # @key e
 # @desc edit a line with text editor '('${editor-not available}')'
 #
-editor_cands=(vi vim)
-editor=
-for cand in ${editor_cands[@]}; do
-    which ${cand} &>/dev/null && editor=${cand} && break
-done
+readonly editor=$(__GetFirstAvailableCommand vi vim)
 case ${editor} in
     vi|vim)
 	function EditFile() {
