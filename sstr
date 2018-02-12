@@ -17,7 +17,6 @@ readonly TMP_PREFIX="/tmp/${MY_BASE}.$$"
 readonly TMP_INIT="${TMP_PREFIX}_init"
 readonly TMP_CURRENT="${TMP_PREFIX}_1"
 readonly TMP_PREVIOUS="${TMP_PREFIX}_2"
-readonly FLAGS="cd:x:X:D"
 readonly GREP=$(which grep)
 readonly IGN_CASE_FLAG='-i'
 readonly HIGHLIGHT='--no-filename --color=always'
@@ -53,35 +52,25 @@ Options:
     -d dir      search pattern(s) in the directory
     -x file     exclude file from pattern search
     -X dir      skip pattern search in the directory
+    -h          print this help
     -D          debug mode
 
 Note:
     - Binary files are ignored.
     - Multiple '-x' and '-X' options are accepted.
 EOF
+  __ExitWith 0
 }
 
 function __ExitWith() {
-  local -r IFS='@'
-  # Indices of this array are corresponding to exit status values.
-  local -r err_msgs=("" $(cat <<EOF | tr '\n' "${IFS}"
-no matches
-failed in initialization
-directory '${SEARCH_DIR}' not found
-pattern not specified
-failed in first search
-EOF
-))
+  local -r msg=${2:-unexpected error}
   __CleanUp
   case "$1" in
     0)
       exit 0;;
-    [1-9])
-      echo -e "\033[31mERROR:\033[m ${err_msgs[$1]}" 1>&2
-      exit $1;;
     *)
-      echo -e "\033[31mERROR:\033[m unexpected error" 1>&2
-      exit 127;;
+      echo -e "\033[31mERROR:\033[m ${msg}" 1>&2
+      exit $1;;
   esac
 }
 
@@ -148,7 +137,7 @@ function __GetSearchOptions() {
 
 function __ConductFirstSearch() {
   ${GREP} ${INIT_SEARCH_OPTS} $(__GetSearchOptions 0) ${SEARCH_DIR} \
-	  > ${TMP_INIT} || __ExitWith 1
+	  > ${TMP_INIT} || __ExitWith 1 'no matches'
   cp -pf ${TMP_INIT} ${TMP_CURRENT}
 }
 
@@ -403,8 +392,8 @@ function __EnableDebugMode() {
 ## Main routine
 ##
 
-__BuildCommandLists || __ExitWith 2
-while getopts "${FLAGS}" flag; do
+__BuildCommandLists || __ExitWith 2 'failed in initialization'
+while getopts "cd:x:X:hD" flag; do
   case $flag in
     c)
       __ToggleCaseSensitivity;;
@@ -416,17 +405,18 @@ while getopts "${FLAGS}" flag; do
       __ExcludeDirectories $OPTARG;;
     D)
       __EnableDebugMode;;
+    h)
+      __PrintUsage;;
     *)
-      __PrintUsage
-      __ExitWith 0;;
+      __ExitWith 5 "see help by '-h' option";;
   esac
 done
 shift $(($OPTIND - 1))
 PATTERN_HIST[0]="$1"
 IGN_CASE_HIST[0]="${IGN_CASE}"
 INVERT_HIST[0]=""
-[ -d ${SEARCH_DIR} ] || __ExitWith 3
-[ "${PATTERN_HIST[0]}" ] || __ExitWith 4
+[ -d ${SEARCH_DIR} ] || __ExitWith 3 "directory '${SEARCH_DIR}' not found"
+[ "${PATTERN_HIST[0]}" ] || __ExitWith 4 'pattern not specified'
 ((LAST_EPOCH+=1))
 __ConductFirstSearch && {
   __PrintSearchResult
