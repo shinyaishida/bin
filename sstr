@@ -15,22 +15,26 @@ readonly MY_BASE=$(basename ${ME})
 readonly DEFAULT_DIR=$(pwd)
 readonly TMP_PREFIX="/tmp/${MY_BASE}.$$"
 readonly TMP_INIT="${TMP_PREFIX}_init"
-readonly TMP_FILE1="${TMP_PREFIX}_1"
-readonly TMP_FILE2="${TMP_PREFIX}_2"
+readonly TMP_CURRENT="${TMP_PREFIX}_1"
+readonly TMP_PREVIOUS="${TMP_PREFIX}_2"
+readonly FLAGS="cd:x:X:D"
 readonly GREP=$(which grep)
 readonly IGN_CASE_FLAG='-i'
+readonly HIGHLIGHT='--no-filename --color=always'
 
 # Fixed during initalization
 SEARCH_DIR="${DEFAULT_DIR}"
-SEARCH_PATTERNS=
 INIT_SEARCH_OPTS='-Inr'
 CMD_MAP=
 CMD_HELP=
 
 # Mutable
 IGN_CASE=${IGN_CASE_FLAG}
-INPUT=
-SEARCH_HISTORY=()
+PATTERN=
+PATTERN_HIST=()
+IGN_CASE_HIST=()
+INVERT_HIST=()
+LAST_EPOCH=-1  # Note: can be removed after bash on MacOS migrates to ver. 4
 QUICK_UNDO=
 
 function __CleanUp() {
@@ -42,17 +46,16 @@ trap "__CleanUp" 1 2 3 15
 function __PrintUsage() {
   cat <<EOF
 Usage:
-    ${MY_BASE} [options] <pattern>[ <pattern> ...]
+    ${MY_BASE} [options] <pattern>
 
 Options:
     -c          case-sensitive search
     -d dir      search pattern(s) in the directory
     -x file     exclude file from pattern search
     -X dir      skip pattern search in the directory
+    -D          debug mode
 
 Note:
-    - If multiple patterns are specified, ${MY_BASE} picks lines containing any
-      of the patterns.
     - Binary files are ignored.
     - Multiple '-x' and '-X' options are accepted.
 EOF
@@ -65,10 +68,10 @@ function __ExitWith() {
 no matches
 failed in initialization
 directory '${SEARCH_DIR}' not found
-no patterns specified
+pattern not specified
 failed in first search
 EOF
-		       ))
+))
   __CleanUp
   case "$1" in
     0)
@@ -91,30 +94,32 @@ function __GetFirstAvailableCommand() {
 }
 
 function __GetHitCount() {
-  local -r output=($(wc -l ${TMP_FILE1}))
+  local -r output=($(wc -l ${TMP_CURRENT}))
   echo ${output[0]}
 }
 
 function __PromptInput() {
-  echo -en "\033[33m$1: \033[m" >&2 && read INPUT && [ "$INPUT" ]
+  echo -en "\033[33m$1: \033[m" >&2 && read PATTERN && [ "$PATTERN" ]
 }
 
 function __SearchEntries() {
-  __PromptInput "pattern" && \
-    local -r search_opt="${IGN_CASE} $@ ${INPUT}" && \
-    SEARCH_HISTORY[${#SEARCH_HISTORY[@]}]="${search_opt}" && \
-    cat ${TMP_FILE1} > ${TMP_FILE2} && \
-    QUICK_UNDO=yes && \
-    ${GREP} ${search_opt} ${TMP_FILE2} > ${TMP_FILE1}
+  __PromptInput "pattern"
+  ((LAST_EPOCH+=1))
+  PATTERN_HIST[${LAST_EPOCH}]="${PATTERN}"
+  IGN_CASE_HIST[${LAST_EPOCH}]="${IGN_CASE}"
+  INVERT_HIST[${LAST_EPOCH}]="$@"
+  cp -pf ${TMP_CURRENT} ${TMP_PREVIOUS}
+  QUICK_UNDO=yes
+  ${GREP} "$@" "${IGN_CASE}" "${PATTERN}" ${TMP_PREVIOUS} > ${TMP_CURRENT}
 }
 
 function __SelectEntry() {
   local -r hit_count=$(__GetHitCount)
   [ ${hit_count} -gt 0 ] && \
     __PromptInput "number (1-${hit_count})" && \
-    [[ ${INPUT} =~ ^[1-9][0-9]*$ ]] && \
-    [ ${INPUT} -le ${hit_count} ] && \
-    head -${INPUT} ${TMP_FILE1} | tail -1
+    [[ ${PATTERN} =~ ^[1-9][0-9]*$ ]] && \
+    [ ${PATTERN} -le ${hit_count} ] && \
+    head -${PATTERN} ${TMP_CURRENT} | tail -1
 }
 
 function __GetCaseSensitivity() {
@@ -137,38 +142,46 @@ function __ExcludeDirectories() {
   INIT_SEARCH_OPTS=${INIT_SEARCH_OPTS}${1:+ --exclude-dir=${1}}
 }
 
-function __SetSearchPatterns() {
-  for pattern in $@; do
-    SEARCH_PATTERNS=${SEARCH_PATTERNS}${pattern:+ -e ${pattern}}
-  done
+function __GetSearchOptions() {
+  echo -n "${INVERT_HIST[$1]}" "${IGN_CASE_HIST[$1]}" "${PATTERN_HIST[$1]}"
 }
 
 function __ConductFirstSearch() {
-  ${GREP} ${INIT_SEARCH_OPTS} ${SEARCH_DIR} > ${TMP_INIT} || __ExitWith 1
-  cat ${TMP_INIT} > ${TMP_FILE1}
+  ${GREP} ${INIT_SEARCH_OPTS} $(__GetSearchOptions 0) ${SEARCH_DIR} \
+	  > ${TMP_INIT} || __ExitWith 1
+  cp -pf ${TMP_INIT} ${TMP_CURRENT}
+}
+
+function __RerunSearch() {
+  mv -f ${TMP_CURRENT} ${TMP_PREVIOUS}
+  ${GREP} $(__GetSearchOptions $1) ${TMP_PREVIOUS} > ${TMP_CURRENT}
 }
 
 function __RerunSearches() {
   local i=0
-  while [ $i -lt ${#SEARCH_HISTORY[@]} ]; do
-    cat ${TMP_FILE1} > ${TMP_FILE2}
-    ${GREP} ${SEARCH_HISTORY[$i]} ${TMP_FILE2} > ${TMP_FILE1}
+  while [ $i -le ${LAST_EPOCH} ]; do
+    __RerunSearch $i
     ((i+=1))
   done
+}
+
+function __HighlightFoundPattern() {
+  [ "${INVERT_HIST[${LAST_EPOCH}]}" ] && cat ${TMP_CURRENT} || \
+      ${GREP} ${HIGHLIGHT} $(__GetSearchOptions ${LAST_EPOCH}) ${TMP_CURRENT}
 }
 
 case $(__GetFirstAvailableCommand more less) in
   more)
     function __PrintFoundPatterns() {
-      more -N ${TMP_FILE1}
+      __HighlightFoundPattern | more -NR
     };;
   less)
     function __PrintFoundPatterns() {
-      less -N ${TMP_FILE1}
+      __HighlightFoundPattern | less -NR
     };;
   *)
     function __PrintFoundPatterns() {
-      cat -n ${TMP_FILE1}
+      __HighlightFoundPattern | cat -ne
     };;
 esac
 
@@ -235,13 +248,16 @@ function SearchEntriesNotContainingPattern() {
 # @key u
 # @desc undo last search
 function UndoSearch() {
-  [ ${#SEARCH_HISTORY[@]} -gt 0 ] && {
-    unset SEARCH_HISTORY[$((${#SEARCH_HISTORY[@]} - 1))]
+  [ ${LAST_EPOCH} -gt 0 ] && {
+    unset INVERT_HIST[${LAST_EPOCH}]
+    unset IGN_CASE_HIST[${LAST_EPOCH}]
+    unset PATTERN_HIST[${LAST_EPOCH}]
+    ((LAST_EPOCH-=1))
     [ "${QUICK_UNDO-}" ] && {
-      [ -f ${TMP_FILE2} ] && cat ${TMP_FILE2} > ${TMP_FILE1}
+      [ -f ${TMP_PREVIOUS} ] && cp -pf ${TMP_PREVIOUS} ${TMP_CURRENT}
       QUICK_UNDO=
     } || {
-      cat ${TMP_INIT} > ${TMP_FILE1}
+      cp -pf ${TMP_INIT} ${TMP_CURRENT}
       __RerunSearches
     }
   }
@@ -301,14 +317,14 @@ esac
 # @key l
 # @desc list file names hit in current search
 function ListFileNames() {
-  cut -d : -f 1 ${TMP_FILE1} | sort -u
+  cut -d : -f 1 ${TMP_CURRENT} | sort -u
 }
 
 # @func SaveSearchResult
 # @key s
 # @desc save current result in a file '('overwritten')'
 function SaveSearchResult() {
-  __PromptInput "file" && cat ${TMP_FILE1} > ${INPUT}
+  __PromptInput "file" && cp -pf ${TMP_CURRENT} ${PATTERN}
 }
 readonly SaveSearchResult
 
@@ -363,7 +379,7 @@ function __BuildCommandLists() {
 
 function __GetCommandFunction() {
   local IFS=''
-  ${GREP} "^${INPUT}" <<< ${CMD_MAP} | cut -d ' ' -f 2
+  ${GREP} "^${PATTERN}" <<< ${CMD_MAP} | cut -d ' ' -f 2
 }
 
 function __ExecuteCommand() {
@@ -379,12 +395,16 @@ function __SearchInteractively() {
   done
 }
 
+function __EnableDebugMode() {
+  set -x
+}
+
 ##
 ## Main routine
 ##
 
 __BuildCommandLists || __ExitWith 2
-while getopts "cd:x:X:" flag; do
+while getopts "${FLAGS}" flag; do
   case $flag in
     c)
       __ToggleCaseSensitivity;;
@@ -394,16 +414,20 @@ while getopts "cd:x:X:" flag; do
       __ExcludeFiles $OPTARG;;
     X)
       __ExcludeDirectories $OPTARG;;
+    D)
+      __EnableDebugMode;;
     *)
       __PrintUsage
       __ExitWith 0;;
   esac
 done
 shift $(($OPTIND - 1))
-__SetSearchPatterns $@
+PATTERN_HIST[0]="$1"
+IGN_CASE_HIST[0]="${IGN_CASE}"
+INVERT_HIST[0]=""
 [ -d ${SEARCH_DIR} ] || __ExitWith 3
-[ "${SEARCH_PATTERNS-}" ] || __ExitWith 4
-readonly INIT_SEARCH_OPTS=${INIT_SEARCH_OPTS}" ${IGN_CASE} ${SEARCH_PATTERNS}"
+[ "${PATTERN_HIST[0]}" ] || __ExitWith 4
+((LAST_EPOCH+=1))
 __ConductFirstSearch && {
   __PrintSearchResult
   __SearchInteractively
