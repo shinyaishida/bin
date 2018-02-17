@@ -29,7 +29,6 @@ CMD_HELP=
 
 # Mutable
 IGN_CASE=${IGN_CASE_FLAG}
-PATTERN=
 PATTERN_HIST=()
 IGN_CASE_HIST=()
 INVERT_HIST=()
@@ -88,27 +87,30 @@ function __GetHitCount() {
 }
 
 function __PromptInput() {
-  echo -en "\033[33m$1: \033[m" >&2 && read PATTERN && [ "$PATTERN" ]
+  local input=
+  echo -en "\033[33m$1: \033[m" >&2 && read input
+  echo ${input}
 }
 
 function __SearchEntries() {
-  __PromptInput "pattern"
+  local -r pattern=$(__PromptInput "pattern")
   ((LAST_EPOCH+=1))
-  PATTERN_HIST[${LAST_EPOCH}]="${PATTERN}"
+  PATTERN_HIST[${LAST_EPOCH}]="${pattern}"
   IGN_CASE_HIST[${LAST_EPOCH}]="${IGN_CASE}"
   INVERT_HIST[${LAST_EPOCH}]="$@"
   cp -pf ${TMP_CURRENT} ${TMP_PREVIOUS}
   QUICK_UNDO=yes
-  ${GREP} "$@" "${IGN_CASE}" "${PATTERN}" ${TMP_PREVIOUS} > ${TMP_CURRENT}
+  ${GREP} $@ ${IGN_CASE} "${pattern}" ${TMP_PREVIOUS} > ${TMP_CURRENT}
 }
 
 function __SelectEntry() {
   local -r hit_count=$(__GetHitCount)
-  [ ${hit_count} -gt 0 ] && \
-    __PromptInput "number (1-${hit_count})" && \
-    [[ ${PATTERN} =~ ^[1-9][0-9]*$ ]] && \
-    [ ${PATTERN} -le ${hit_count} ] && \
-    head -${PATTERN} ${TMP_CURRENT} | tail -1
+  [ ${hit_count} -gt 0 ] && {
+    local number=$(__PromptInput "number (1-${hit_count})")
+    [[ "${number}" =~ ^[1-9][0-9]*$ ]] && \
+      [ "${number}" -le ${hit_count} ] && \
+      head -${number} ${TMP_CURRENT} | tail -1
+  }
 }
 
 function __GetCaseSensitivity() {
@@ -313,7 +315,8 @@ function ListFileNames() {
 # @key s
 # @desc save current result in a file '('overwritten')'
 function SaveSearchResult() {
-  __PromptInput "file" && cp -pf ${TMP_CURRENT} ${PATTERN}
+  local -r file_name=$(__PromptInput "file")
+  [ "${file_name}" ] && cp -pf ${TMP_CURRENT} ${file_name}
 }
 readonly SaveSearchResult
 
@@ -368,14 +371,13 @@ function __BuildCommandLists() {
 
 function __GetCommandFunction() {
   local IFS=''
-  ${GREP} "^${PATTERN}" <<< ${CMD_MAP} | cut -d ' ' -f 2
+  ${GREP} "^$1" <<< ${CMD_MAP} | cut -d ' ' -f 2
 }
 
 function __ExecuteCommand() {
-  __PromptInput "command" && {
-    local -r cmd_func=$(__GetCommandFunction)
-    [ "${cmd_func}" ] && ${cmd_func} || __PrintCommandList
-  }
+  local -r cmd=$(__PromptInput "command")
+  local -r cmd_func=$(__GetCommandFunction ${cmd})
+  [ "${cmd_func}" ] && ${cmd_func} || __PrintCommandList
 }
 
 function __SearchInteractively() {
