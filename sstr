@@ -137,7 +137,7 @@ function __GetSearchOptions() {
 
 function __ConductFirstSearch() {
   ${GREP} ${INIT_SEARCH_OPTS} $(__GetSearchOptions 0) ${SEARCH_DIR} \
-	  > ${TMP_INIT} || __ExitWith 1 'no matches'
+	      > ${TMP_INIT} || __ExitWith 1 'no matches'
   cp -pf ${TMP_INIT} ${TMP_CURRENT}
 }
 
@@ -269,20 +269,20 @@ case ${viewer} in
   less)
     function ViewInFile() {
       read file_name line_num rest < <(__SelectEntry | tr ':' ' ') && \
-	cat -n ${file_name} | less +${line_num}
+	    cat -n ${file_name} | less +${line_num}
     };;
   more)
     function ViewInFile() {
       read file_name line_num rest < <(__SelectEntry | tr ':' ' ') && \
-	cat -n ${file_name} | more +${line_num}
+	    cat -n ${file_name} | more +${line_num}
     };;
   *)
     function ViewInFile() {
       local -r range=10
       read file_name line_num rest < <(__SelectEntry | tr ':' ' ') && \
-	cat -n ${file_name} | \
-	  head -$((${line_num} + ${range})) | \
-	  tail -$((${range} * 2 + 1))
+	    cat -n ${file_name} | \
+	      head -$((${line_num} + ${range})) | \
+	      tail -$((${range} * 2 + 1))
     };;
 esac
 
@@ -294,7 +294,7 @@ case ${editor} in
   vi|vim)
     function EditFile() {
       read file_name line_num rest < <(__SelectEntry | tr ':' ' ') && \
-	${editor} +${line_num} ${file_name}
+	    ${editor} +${line_num} ${file_name}
     };;
   *)
     function EditFile() {
@@ -357,8 +357,8 @@ function __BuildCommandLists() {
     [ "${func_name}" -a "${desc}" ] && \
       [ "${at_key}" = "@key" -a "${at_desc}" = "@desc" ] && \
       [[ "${k}" =~ ^[a-z]$ ]] && {
-	CMD_MAP="${CMD_MAP+${CMD_MAP}$'\n'}${k} ${func_name}"
-	CMD_HELP="${CMD_HELP+${CMD_HELP}$'\n'}  ${k}: ${desc}"
+	    CMD_MAP="${CMD_MAP+${CMD_MAP}$'\n'}${k} ${func_name}"
+	    CMD_HELP="${CMD_HELP+${CMD_HELP}$'\n'}  ${k}: ${desc}"
       }
     ((i+=1))
   done
