@@ -1,0 +1,19 @@
+#!/bin/bash
+
+readonly envs=(pyenv rbenv nodenv)
+
+for env in "${envs[@]}"; do
+  echo "> $env"
+  envdir="$HOME/.$env"
+  if [ -d "$envdir" ]; then
+    cd "$envdir"
+    if [ $(git rev-parse --is-inside-work-tree 2>/dev/null) ]; then
+      git pull
+    else
+      echo "$envdir is not a git repository"
+    fi
+      cd - > /dev/null 2>&1
+  else
+    echo "$envdir does not exist"
+  fi
+done
