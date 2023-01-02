@@ -416,4 +416,3 @@ __print_search_result
 while true; do
   __execute_command
 done
-
