@@ -8,24 +8,24 @@
 readonly conj='or'
 
 function __or() {
-    case $# in
-	0)
-	;;
-	1)
-	    echo $*;;
-	2)
+  case $# in
+  	0)
+    	;;
+	  1)
+	    echo "$*";;
+	  2)
 	    args="$*"
 	    echo "${args% *} ${conj} ${args##* }";;
-	*)
+	  *)
 	    args="$*"
 	    args=${args// /, }
 	    echo "${args%,*}, ${conj} ${args##*, }";;
-    esac
+  esac
 }
 readonly -f __or
 
-[ -p /dev/stdin ] && {
-    __or $(cat -)
-} || {
-    __or $@
-}
+if [ -p /dev/stdin ]; then
+  __or "$(cat -)"
+else
+  __or "$@"
+fi

@@ -6,198 +6,210 @@
 #
 # Search a keyword in files located in a directory and its subdirectories.
 # The search result is printed with file names and line numbers. Additional
-# actions, extra search, viewing/editing a file, etc, can be applied to the
-# result interactively.
-#
+# actions to the search result (extra searches, viewing/editing a file, etc)
+# can be applied interactively.
 
-readonly ME=$0
-readonly MY_BASE=$(basename ${ME})
-readonly DEFAULT_DIR=$(pwd)
-readonly TMP_PREFIX="/tmp/${MY_BASE}.$$"
-readonly TMP_INIT="${TMP_PREFIX}_init"
-readonly TMP_CURRENT="${TMP_PREFIX}_1"
-readonly TMP_PREVIOUS="${TMP_PREFIX}_2"
-readonly GREP=$(which grep)
-readonly IGN_CASE_FLAG='-i'
-readonly HIGHLIGHT='--no-filename --color=always'
+readonly me="$0"
+readonly my_base="${me##*/}"
+default_dir=$(pwd)
+readonly default_dir
+readonly tmp_prefix="/tmp/${my_base}.$$"
+readonly tmp_init="${tmp_prefix}_init"
+readonly tmp_current="${tmp_prefix}_current"
+readonly tmp_previous="${tmp_prefix}_previous"
+# search options
+search_dir="$default_dir"
+grep_options='-Inr'
+ignore_cases=
+quick_undo=
+debug_mode=
+# variables to store search history
+pattern_history=()
+ignore_cases_history=()
+invert_history=()
+last_epoch=-1  # note: can be removed after bash on macOS migrates to version 4
 
-# Fixed during initalization
-SEARCH_DIR="${DEFAULT_DIR}"
-INIT_SEARCH_OPTS='-Inr'
-CMD_MAP=
-CMD_HELP=
-
-# Mutable
-IGN_CASE=${IGN_CASE_FLAG}
-PATTERN_HIST=()
-IGN_CASE_HIST=()
-INVERT_HIST=()
-LAST_EPOCH=-1  # Note: can be removed after bash on MacOS migrates to ver. 4
-QUICK_UNDO=
-
-function __CleanUp() {
-  rm -f ${TMP_PREFIX}* &>/dev/null
+function __clean {
+  rm -f "$tmp_prefix"* &>/dev/null
 }
 
-trap "__CleanUp" 1 2 3 15
-
-function __PrintUsage() {
-  cat <<EOF
-Usage:
-    ${MY_BASE} [options] <pattern>
-
-Options:
-    -c          case-sensitive search
-    -d dir      search pattern(s) in the directory
-    -x file     exclude file from pattern search
-    -X dir      skip pattern search in the directory
-    -h          print this help
-    -D          debug mode
-
-Note:
-    - Binary files are ignored.
-    - Multiple '-x' and '-X' options are accepted.
-EOF
-  __ExitWith 0
-}
-
-function __ExitWith() {
-  local -r msg=${2:-unexpected error}
-  __CleanUp
+function __exit_with {
+  local -r msg="${2:-unexpected error}"
+  __clean
   case "$1" in
     0)
       exit 0;;
     *)
-      echo -e "\033[31mERROR:\033[m ${msg}" 1>&2
-      exit $1;;
+      echo -e "\033[31mERROR:\033[m $msg" 1>&2
+      exit "$1";;
   esac
 }
 
-function __GetFirstAvailableCommand() {
-  local first=
-  for c in $@; do
-    which ${c} &>/dev/null && first=${c} && break
+trap '__exit_with 127 ctrl-c' 1 2 3 15
+
+function __toggle_debug_mode {
+  if [ "$debug_mode" ]; then
+    debug_mode=
+    set +x
+  else
+    debug_mode=y
+    set -x
+  fi
+}
+
+function __get_first_available_command {
+  local first
+  for c in "$@"; do
+    which "$c" &>/dev/null && first="$c" && break
   done
-  echo -n ${first}
+  echo -n "$first"
 }
 
-function __GetHitCount() {
-  local -r output=($(wc -l ${TMP_CURRENT}))
-  echo ${output[0]}
+function __print_usage {
+  cat <<EOF
+usage:
+    $my_base [options] <pattern>
+
+options:
+    -c          case-sensitive search
+    -d dir      search pattern in the directory
+    -D          debug mode
+    -h          print this help
+    -x file     exclude file from pattern search
+    -X dir      skip pattern search in the directory
+
+note:
+    - Binary files are ignored.
+    - Multiple '-x' and '-X' options are accepted.
+EOF
+  __exit_with 0
 }
 
-function __PromptInput() {
-  local input=
-  echo -en "\033[33m$1: \033[m" >&2 && read input
-  echo ${input}
+function __toggle_case_sensitivity {
+  ignore_cases=$([ "$ignore_cases" ] && echo '' || echo '-i')
 }
 
-function __SearchEntries() {
-  local -r pattern=$(__PromptInput "pattern")
-  ((LAST_EPOCH+=1))
-  PATTERN_HIST[${LAST_EPOCH}]="${pattern}"
-  IGN_CASE_HIST[${LAST_EPOCH}]="${IGN_CASE}"
-  INVERT_HIST[${LAST_EPOCH}]="$@"
-  cp -pf ${TMP_CURRENT} ${TMP_PREVIOUS}
-  QUICK_UNDO=yes
-  ${GREP} $@ ${IGN_CASE} "${pattern}" ${TMP_PREVIOUS} > ${TMP_CURRENT}
+function __set_search_dir {
+  search_dir="${search_dir:-$1}"
 }
 
-function __SelectEntry() {
-  local -r hit_count=$(__GetHitCount)
-  [ ${hit_count} -gt 0 ] && {
-    local number=$(__PromptInput "number (1-${hit_count})")
-    [[ "${number}" =~ ^[1-9][0-9]*$ ]] && \
-      [ "${number}" -le ${hit_count} ] && \
-      head -${number} ${TMP_CURRENT} | tail -1
-  }
+function __exclude_file {
+  grep_options="$grep_options${1:+ --exclude=$1}"
 }
 
-function __GetCaseSensitivity() {
-  [ "${IGN_CASE}" ] && echo "case-ignoring" || echo "case-sensitive"
+function __exclude_directory {
+  grep_options="$grep_options${1:+ --exclude-dir=$1}"
 }
 
-function __ToggleCaseSensitivity() {
-  IGN_CASE=$([ "${IGN_CASE}" ] && echo "" || echo "${IGN_CASE_FLAG}")
+function __enable_debug_mode {
+  __toggle_debug_mode
 }
 
-function __SetSearchDirectory() {
-  SEARCH_DIR=${SEARCH_DIR:-$1}
+function __get_hit_count {
+  local wc_output
+  read -ra wc_output <<< "$(wc -l "$tmp_current" 2>/dev/null)"
+  echo "${wc_output[0]}"
 }
 
-function __ExcludeFiles() {
-  INIT_SEARCH_OPTS=${INIT_SEARCH_OPTS}${1:+ --exclude=$1}
-}
-
-function __ExcludeDirectories() {
-  INIT_SEARCH_OPTS=${INIT_SEARCH_OPTS}${1:+ --exclude-dir=${1}}
-}
-
-function __GetSearchOptions() {
-  echo -n "${INVERT_HIST[$1]}" "${IGN_CASE_HIST[$1]}" "${PATTERN_HIST[$1]}"
-}
-
-function __ConductFirstSearch() {
-  ${GREP} ${INIT_SEARCH_OPTS} $(__GetSearchOptions 0) ${SEARCH_DIR} \
-	      > ${TMP_INIT} || __ExitWith 1 'no matches'
-  cp -pf ${TMP_INIT} ${TMP_CURRENT}
-}
-
-function __RerunSearch() {
-  mv -f ${TMP_CURRENT} ${TMP_PREVIOUS}
-  ${GREP} $(__GetSearchOptions $1) ${TMP_PREVIOUS} > ${TMP_CURRENT}
-}
-
-function __RerunSearches() {
-  local i=0
-  while [ $i -le ${LAST_EPOCH} ]; do
-    __RerunSearch $i
-    ((i+=1))
+function __highlight_found_patterns {
+  local epoch="$last_epoch"
+  while [ "${invert_history[epoch]}" ] && [ "$epoch" -gt 0 ]; do
+    ((epoch-=1))
   done
+  # shellcheck disable=SC2086
+  grep --no-filename --color=always ${ignore_cases_history[epoch]} \
+    "${pattern_history[epoch]}" "$tmp_current"
 }
 
-function __HighlightFoundPattern() {
-  [ "${INVERT_HIST[${LAST_EPOCH}]}" ] && cat ${TMP_CURRENT} || \
-      ${GREP} ${HIGHLIGHT} $(__GetSearchOptions ${LAST_EPOCH}) ${TMP_CURRENT}
-}
-
-case $(__GetFirstAvailableCommand more less) in
-  more)
-    function __PrintFoundPatterns() {
-      __HighlightFoundPattern | more -NR
-    };;
-  less)
-    function __PrintFoundPatterns() {
-      __HighlightFoundPattern | less -NR
+pager=$(__get_first_available_command more less)
+readonly pager
+case "$pager" in
+  more|less)
+    function __print_found_patterns {
+      __highlight_found_patterns | $pager -NR
     };;
   *)
-    function __PrintFoundPatterns() {
-      __HighlightFoundPattern | cat -ne
+    function __print_found_patterns {
+      __highlight_found_patterns | cat -ne
     };;
 esac
 
-function __PrintSearchResult() {
-  local -r count=$(__GetHitCount)
-  [ ${count} -gt 0 ] && __PrintFoundPatterns
-  echo -e "\033[32m${count} line(s) matched\033[m"
+function __conduct_first_search {
+  local pattern="$1"
+  ((last_epoch+=1))
+  pattern_history[last_epoch]="$pattern"
+  ignore_cases_history[last_epoch]="$ignore_cases"
+  invert_history[last_epoch]=''
+  # shellcheck disable=SC2086
+  grep $grep_options $ignore_cases "$pattern" "$search_dir"  > "$tmp_init" || \
+    __exit_with 1 'no matches'
+  cp -pf "$tmp_init" "$tmp_current"
 }
 
-function __PrintCommandList() {
-  local -r IFS=''
-  (eval echo $(echo ${CMD_HELP} | tr '\n' @)) | tr @ '\n'
+function __search_entries {
+  local pattern
+  pattern=$(__prompt_input 'pattern')
+  ((last_epoch+=1))
+  pattern_history[last_epoch]="$pattern"
+  ignore_cases_history[last_epoch]="$ignore_cases"
+  invert_history[last_epoch]="$*"
+  cp -pf "$tmp_current" "$tmp_previous"
+  quick_undo=yes
+  # shellcheck disable=SC2086
+  grep "$@" $ignore_cases "$pattern" "$tmp_previous" > "$tmp_current"
 }
 
+function __select_entry {
+  local -r hit_count=$(__get_hit_count)
+  if [ "$hit_count" -gt 0 ]; then
+    local number
+    number=$(__prompt_input "number (1-$hit_count)")
+    [[ "$number" =~ ^[1-9][0-9]*$ ]] && \
+      [ "$number" -le "$hit_count" ] && \
+      head "-$number" "$tmp_current" | tail -1
+  fi
+}
 
-#
+function __print_search_result {
+  local -r count=$(__get_hit_count)
+  [ "$count" -gt 0 ] && __print_found_patterns
+  echo -e "\033[32m$count line(s) matched\033[m"
+}
+
+function __print_command_list {
+  echo "$command_help"
+}
+
+function __prompt_input {
+  local input
+  echo -en "\033[33m$1: \033[m" >&2 && read -r input
+  echo "$input"
+}
+
+function __get_command_function {
+  local IFS=''
+  grep "^$1" <<< "$command_map" | cut -d ' ' -f 2
+}
+
+function __execute_command {
+  local -r cmd=$(__prompt_input 'command')
+  local -r cmd_func=$(__get_command_function "$cmd")
+  if [ "$cmd_func" ]; then
+    $cmd_func
+  else
+    __print_command_list
+  fi
+}
+
 # Command functions
 #
 # To add a new command, the function must have a comment in the following
-# format.  This special comment is parsed by this script itself and registered.
-# '@func' is a tag to specify the function's name.  '@key' is a tag to indicate
-# an alphabetical letter assigned to call the function via the prompt.  '@desc'
-# is a tag for a brief description of the function.  This description is
-# printed in the command help.  The note may contain scripts; i.e., variables,
-# ${VAR}, and command/function calls, $(command...).  Instead, to print letters
+# format. This special comment is parsed by this script itself and registered.
+# '@func' is a tag to specify the function's name. '@key' is a tag to indicate
+# an alphabetical letter assigned to call the function via the prompt. '@desc'
+# is a tag for a brief description of the function. This description is
+# printed in the command help. The note may contain scripts; i.e., variables,
+# $var, and command/function calls, $(command...). Instead, to print letters
 # and strings, which have a special meaning for bash script, as they are, they
 # must be quoted with single quotation, like '(' and ')'.
 #
@@ -212,215 +224,196 @@ function __PrintCommandList() {
 # - A tag line must start with '#'.
 # - Only spaces, ' ', may be between the '#' and a tag.
 
-# @func PrintSearchResult
-# @key p
-# @desc print search result
-function PrintSearchResult() {
-  __PrintSearchResult
+# @func ToggleCaseSensitivity
+# @key c
+# @desc toggle case sensitivity
+function ToggleCaseSensitivity {
+  __toggle_case_sensitivity
+  if [ "$ignore_cases" ]; then
+    echo 'ignore cases'
+  else
+    echo 'consider cases'
+  fi
+}
+
+# @func ToggleDebugMode
+# @key D
+# @desc toggle debug mode
+function ToggleDebugMode {
+  __toggle_debug_mode
+  if [ "$debug_mode" ]; then
+    echo 'debug mode enabled'
+  else
+    echo 'debug mode disabled'
+  fi
+}
+
+# @func EditFile
+# @key e
+# @desc open a file in editor '('${editor-not available}')'
+editor=$(__get_first_available_command vim vi)
+readonly editor
+case "$editor" in
+  vim|vi)
+    function EditFile {
+      read -r file_name line_num rest < <(__select_entry | tr ':' ' ') && \
+        $editor "+$line_num" "$file_name"
+    };;
+  *)
+    function EditFile {
+      echo 'no editors: cannot use this command in your environment'
+    };;
+esac
+
+# @func ShowHelp
+# @key h
+# @desc show this help
+function ShowHelp {
+  __print_command_list
+}
+
+# @func ListFiles
+# @key l
+# @desc list files in the current search result
+function ListFiles {
+  cut -d : -f 1 "$tmp_current" | sort -u
 }
 
 # @func SearchEntriesContainingPattern
 # @key m
 # @desc get lines containing substring matching a specified pattern
-function SearchEntriesContainingPattern() {
-  __SearchEntries
-  __PrintSearchResult
+function SearchEntriesContainingPattern {
+  __search_entries
+  __print_search_result
 }
 
 # @func SearchEntriesNotContainingPattern
 # @key n
 # @desc get lines not containing substring matching a specified pattern
-function SearchEntriesNotContainingPattern() {
-  __SearchEntries -v
-  __PrintSearchResult
+function SearchEntriesNotContainingPattern {
+  __search_entries -v
+  __print_search_result
 }
 
-# @func UndoSearch
-# @key u
-# @desc undo last search
-function UndoSearch() {
-  [ ${LAST_EPOCH} -gt 0 ] && {
-    unset INVERT_HIST[${LAST_EPOCH}]
-    unset IGN_CASE_HIST[${LAST_EPOCH}]
-    unset PATTERN_HIST[${LAST_EPOCH}]
-    ((LAST_EPOCH-=1))
-    [ "${QUICK_UNDO-}" ] && {
-      [ -f ${TMP_PREVIOUS} ] && cp -pf ${TMP_PREVIOUS} ${TMP_CURRENT}
-      QUICK_UNDO=
-    } || {
-      cp -pf ${TMP_INIT} ${TMP_CURRENT}
-      __RerunSearches
-    }
-  }
-  __PrintSearchResult
-}
-
-# @func RefreshSearch
-# @key r
-# @desc refresh search result
-function RefreshSearch() {
-  __ConductFirstSearch && __RerunSearches
-  __PrintSearchResult
-}
-
-# @func ViewInFile
-# @key v
-# @desc view a line with file viewer '('${viewer-not available}')'
-readonly viewer=$(__GetFirstAvailableCommand less more)
-case ${viewer} in
-  less)
-    function ViewInFile() {
-      read file_name line_num rest < <(__SelectEntry | tr ':' ' ') && \
-	    cat -n ${file_name} | less +${line_num}
-    };;
-  more)
-    function ViewInFile() {
-      read file_name line_num rest < <(__SelectEntry | tr ':' ' ') && \
-	    cat -n ${file_name} | more +${line_num}
-    };;
-  *)
-    function ViewInFile() {
-      local -r range=10
-      read file_name line_num rest < <(__SelectEntry | tr ':' ' ') && \
-	    cat -n ${file_name} | \
-	      head -$((${line_num} + ${range})) | \
-	      tail -$((${range} * 2 + 1))
-    };;
-esac
-
-# @func EditFile
-# @key e
-# @desc edit a line with text editor '('${editor-not available}')'
-readonly editor=$(__GetFirstAvailableCommand vi vim)
-case ${editor} in
-  vi|vim)
-    function EditFile() {
-      read file_name line_num rest < <(__SelectEntry | tr ':' ' ') && \
-	    ${editor} +${line_num} ${file_name}
-    };;
-  *)
-    function EditFile() {
-      echo "cannot use this function in your environment"
-    };;
-esac
-
-# @func ListFileNames
-# @key l
-# @desc list file names hit in current search
-function ListFileNames() {
-  cut -d : -f 1 ${TMP_CURRENT} | sort -u
-}
-
-# @func SaveSearchResult
-# @key s
-# @desc save current result in a file '('overwritten')'
-function SaveSearchResult() {
-  local -r file_name=$(__PromptInput "file")
-  [ "${file_name}" ] && cp -pf ${TMP_CURRENT} ${file_name}
-}
-readonly SaveSearchResult
-
-# @func ToggleCaseSensitivity
-# @key c
-# @desc toggle case-sensitivity of search '('$(__GetCaseSensitivity) now')'
-function ToggleCaseSensitivity() {
-  __ToggleCaseSensitivity && __GetCaseSensitivity
-}
-
-# @func ShowHelp
-# @key h
-# @desc show this help
-function ShowHelp() {
-  __PrintCommandList
+# @func PrintSearchResult
+# @key p
+# @desc print search result
+function PrintSearchResult {
+  __print_search_result
 }
 
 # @func Quit
 # @key q
 # @desc quit search
-function Quit() {
-  __ExitWith 0
+function Quit {
+  __exit_with 0
 }
 
-#
-# Sub-routines
-#
+# @func RefreshSearch
+# @key r
+# @desc refresh search result
+function RefreshSearch {
+  __rerun_searches
+  __print_search_result
+}
 
-function __BuildCommandLists() {
+# @func UndoSearch
+# @key u
+# @desc undo last search
+function UndoSearch {
+  if [ "$last_epoch" -gt 0 ]; then
+    unset 'invert_history[last_epoch]'
+    unset 'ignore_cases_history[last_epoch]'
+    unset 'pattern_history[last_epoch]'
+    ((last_epoch-=1))
+    if [ "${quick_undo-}" ]; then
+      [ -f "$tmp_previous" ] && cp -pf "$tmp_previous" "$tmp_current"
+      quick_undo=
+    else
+      cp -pf "$tmp_init" "$tmp_current"
+      __rerun_searches
+    fi
+  fi
+  __print_search_result
+}
+
+# @func ViewFile
+# @key v
+# @desc open a file in viewer '('${viewer-not available}')'
+viewer=$(__get_first_available_command vim vi less more)
+readonly viewer
+case "$viewer" in
+  vim|vi)
+    function ViewFile {
+      read -r file_name line_num rest < <(__select_entry | tr ':' ' ') && \
+        $viewer -R "+$line_num" '+set nu' "$file_name"
+    };;
+  less|more)
+    function ViewFile {
+      read -r file_name line_num rest < <(__select_entry | tr ':' ' ') && \
+        $viewer "+$line_num" -N "$file_name"
+    };;
+  *)
+    function ViewFile {
+      local -r range=10
+      read -r file_name line_num rest < <(__select_entry | tr ':' ' ') && \
+        cat -n "$file_name" | head -$((line_num + range)) | tail -$((range * 2 + 1))
+    };;
+esac
+
+function __build_command_list {
   # Note: Using associative arrays seems a better choice to implement this
   # function.  However, it is supported from bash version 4.  The MacOS's
   # default bash (/bin/bash) is version 3.
-  local cmd_docs=$(${GREP} '^# *@' ${ME} | tr '\n' ' ')
+  local cmd_docs
+  cmd_docs=$(grep '^# *@' "$me" | tr '\n' ' ')
   cmd_docs=${cmd_docs//'# '/}
   local IFS=$'\n'
+  # shellcheck disable=SC2206
   cmd_docs=(${cmd_docs//@func /$'\n'})
   IFS=' '
   local i=0
-  while [ $i -lt ${#cmd_docs[@]} ]; do
-    read func_name at_key k at_desc desc < <(echo ${cmd_docs[$i]})
-    [ "${func_name}" -a "${desc}" ] && \
-      [ "${at_key}" = "@key" -a "${at_desc}" = "@desc" ] && \
-      [[ "${k}" =~ ^[a-z]$ ]] && {
-	    CMD_MAP="${CMD_MAP+${CMD_MAP}$'\n'}${k} ${func_name}"
-	    CMD_HELP="${CMD_HELP+${CMD_HELP}$'\n'}  ${k}: ${desc}"
-      }
+  while [ $i -lt "${#cmd_docs[@]}" ]; do
+    read -r func_name at_key key at_desc desc <<< "${cmd_docs[i]}"
+    [ "$func_name" ] && [ "$desc" ] && [ "$at_key" = '@key' ] && \
+      [ "$at_desc" = '@desc' ] && [[ "$key" =~ ^[a-zA-Z]$ ]] && {
+      command_map="${command_map+${command_map}$'\n'}$key $func_name"
+      command_help="${command_help+${command_help}$'\n'}  $key: $desc"
+    }
     ((i+=1))
   done
-  readonly CMD_MAP=${CMD_MAP}
-  readonly CMD_HELP=${CMD_HELP}
+  readonly command_map="$command_map"
+  readonly command_help="$command_help"
 }
 
-function __GetCommandFunction() {
-  local IFS=''
-  ${GREP} "^$1" <<< ${CMD_MAP} | cut -d ' ' -f 2
-}
+##### Main routine
 
-function __ExecuteCommand() {
-  local -r cmd=$(__PromptInput "command")
-  local -r cmd_func=$(__GetCommandFunction ${cmd})
-  [ "${cmd_func}" ] && ${cmd_func} || __PrintCommandList
-}
-
-function __SearchInteractively() {
-  while [ x = x ]; do
-    __ExecuteCommand
-  done
-}
-
-function __EnableDebugMode() {
-  set -x
-}
-
-##
-## Main routine
-##
-
-__BuildCommandLists || __ExitWith 2 'failed in initialization'
-while getopts "cd:x:X:hD" flag; do
+__build_command_list || __exit_with 2 'failed initialization'
+while getopts 'cd:x:X:hD' flag; do
   case $flag in
     c)
-      __ToggleCaseSensitivity;;
+      __toggle_case_sensitivity;;
     d)
-      __SetSearchDirectory $OPTARG;;
+      __set_search_dir "$OPTARG";;
     x)
-      __ExcludeFiles $OPTARG;;
+      __exclude_file "$OPTARG";;
     X)
-      __ExcludeDirectories $OPTARG;;
+      __exclude_directory "$OPTARG";;
     D)
-      __EnableDebugMode;;
+      __enable_debug_mode;;
     h)
-      __PrintUsage;;
+      __print_usage;;
     *)
-      __ExitWith 5 "see help by '-h' option";;
+      __exit_with 5 "see help by '-h' option";;
   esac
 done
-shift $(($OPTIND - 1))
-PATTERN_HIST[0]="$1"
-IGN_CASE_HIST[0]="${IGN_CASE}"
-INVERT_HIST[0]=""
-[ -d ${SEARCH_DIR} ] || __ExitWith 3 "directory '${SEARCH_DIR}' not found"
-[ "${PATTERN_HIST[0]}" ] || __ExitWith 4 'pattern not specified'
-((LAST_EPOCH+=1))
-__ConductFirstSearch && {
-  __PrintSearchResult
-  __SearchInteractively
-}
+shift $((OPTIND - 1))
+
+[ -d "$search_dir" ] || __exit_with 3 "directory '$search_dir' not found"
+[ "$1" ] || __exit_with 4 'pattern not specified'
+__conduct_first_search "$1"
+__print_search_result
+while true; do
+  __execute_command
+done
+

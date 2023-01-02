@@ -36,9 +36,9 @@ function __ords() {
     local i=0
     for n in "$@"; do
 	if [[ $n =~ ^0|[1-9][0-9]*$ ]]; then
-	    a[$i]=$(__ord "$n")
+	    a[i]=$(__ord "$n")
         else
-	    a[$i]="$n"
+	    a[i]="$n"
         fi
 	((i+=1))
     done

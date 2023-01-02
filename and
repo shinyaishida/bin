@@ -8,24 +8,24 @@
 readonly conj='and'
 
 function __and() {
-    case $# in
-	0)
-	;;
-	1)
-	    echo $*;;
-	2)
+  case $# in
+    0)
+	    ;;
+	  1)
+	    echo "$*";;
+	  2)
 	    args="$*"
 	    echo "${args% *} ${conj} ${args##* }";;
-	*)
+	  *)
 	    args="$*"
 	    args=${args// /, }
 	    echo "${args%,*}, ${conj} ${args##*, }";;
-    esac
+  esac
 }
 readonly -f __and
 
-[ -p /dev/stdin ] && {
-    __and $(cat -)
-} || {
-    __and $@
-}
+if [ -p /dev/stdin ]; then
+  __and "$(cat -)"
+else
+  __and "$@"
+fi
