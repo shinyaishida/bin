@@ -6,9 +6,13 @@
 #
 
 readonly default_length=80
+# shellcheck disable=SC2034
 readonly gauge_full='123456789'
+# shellcheck disable=SC2034
 readonly gauge_even=' 2 4 6 8 '
+# shellcheck disable=SC2034
 readonly gauge_five='    5    '
+# shellcheck disable=SC2034
 readonly gauge_ten='         '
 readonly gauge_default="${gauge_even}"
 
