@@ -5,70 +5,72 @@
 # Copyright (c) 2013 Shinya Ishida. All rights reserved.
 #
 
-readonly DEFAULT_LENGTH=80
+readonly default_length=80
+readonly gauge_full='123456789'
+readonly gauge_even=' 2 4 6 8 '
+readonly gauge_five='    5    '
+readonly gauge_ten='         '
+readonly gauge_default="${gauge_even}"
 
-function __PrintUsage() {
+function __print_usage {
     cat <<EOF
 usage:
-    $(basename "$0") [-h] [-t type] [length]
+    ${0##*/} [-h] [-t type] [length]
 options:
     -t type    gauge type (full, even, five, or ten; even by default)
     -h         print this help
 note:
-    If 'length' is omitted, the default length ($DEFAULT_LENGTH) is used.
+    If 'length' is omitted, the default length ($default_length) is used.
 EOF
 }
-readonly -f __PrintUsage
+readonly -f __print_usage
 
-function __GetGaugeTemplate() {
-    local -r gauge_full='123456789'
-    local -r gauge_even=${gauge_full//[13579]/ }
-    local -r gauge_default=${gauge_even}
-    local -r gauge_template_name="gauge_$1"
-    local selected_gauge=${!gauge_template_name}
-    selected_gauge=${selected_gauge-${gauge_default}}
-    echo "${selected_gauge//[0-9]/+}"
+function __get_gauge_template {
+  local -r gauge_template_name="gauge_$1"
+  local selected_gauge=${!gauge_template_name}
+  selected_gauge=${selected_gauge-${gauge_default}}
+  echo "${selected_gauge//[0-9]/+}"
 }
-readonly -f __GetGaugeTemplate
+readonly -f __get_gauge_template
 
-function __PrintGauge() {
-    local -r gauge_tmpl=$(__GetGaugeTemplate "$1")
-    gauge=""
-    local -r dec_count=$(($2 / 10))
-    q=0
-    while [ $q -lt $dec_count ]; do
-	((q++))
-	gauge="$gauge$gauge_tmpl$((q % 10))"
-    done
-    r=$(($2 % 10))
-    if [ $r -gt 0 ]; then
-        gauge="$gauge${gauge_tmpl:0:$((r - 1))}$r"
-    fi
-    echo "$gauge"
+function __print_gauge {
+  local -r gauge_tmpl=$(__get_gauge_template "$1")
+  gauge=""
+  local -r dec_count=$(($2 / 10))
+  q=0
+  while [ $q -lt $dec_count ]; do
+  	((q++))
+	  gauge="$gauge$gauge_tmpl$((q % 10))"
+  done
+  r=$(($2 % 10))
+  if [ $r -gt 0 ]; then
+    gauge="$gauge${gauge_tmpl:0:$((r - 1))}$r"
+  fi
+  echo "$gauge"
 }
-readonly -f __PrintGauge
+readonly -f __print_gauge
 
-#
-# Main routine
-#
+##### Main routine
 
 gauge_type=default
 while getopts "t:h" flag; do
-    case $flag in
-	t)
+  case $flag in
+    t)
 	    gauge_type=$OPTARG;;
-	h)
-	    __PrintUsage
+    h)
+	    __print_usage
 	    exit 0;;
-        *)
-            exit 1;;
-    esac
+    *)
+      exit 1;;
+  esac
 done
 shift $((OPTIND - 1))
 
-if [[ "$1" =~ ^[0-9]*$ ]]; then
-    __PrintGauge "$gauge_type" "${1-$DEFAULT_LENGTH}"
+number="${1:-$default_length}"
+if [[ "$number" =~ ^[0-9]*$ ]]; then
+  __print_gauge "$gauge_type" "$number"
 else
-    __PrintUsage
-    exit 2
+  __print_usage
+  exit 2
 fi
+

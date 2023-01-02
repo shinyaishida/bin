@@ -8,7 +8,7 @@ setup() {
 }
 
 @test 'run gauge of default type' {
-  parameters=( \
+  patterns=( \
     ': + + + + 1 + + + + 2 + + + + 3 + + + + 4 + + + + 5 + + + + 6 + + + + 7 + + + + 8' \
     '1:1' \
     '2: 2' \
@@ -22,14 +22,14 @@ setup() {
     '10: + + + + 1' \
     '90: + + + + 1 + + + + 2 + + + + 3 + + + + 4 + + + + 5 + + + + 6 + + + + 7 + + + + 8 + + + + 9' \
   )
-  for pattern in "${patterns[@]}"; do 
+  for pattern in "${patterns[@]}"; do
     run gauge "${pattern%%:*}"
     assert_output "${pattern##*:}"
   done
 }
 
 @test 'run gauge of full type' {
-  parameters=( \
+  patterns=( \
     ':+++++++++1+++++++++2+++++++++3+++++++++4+++++++++5+++++++++6+++++++++7+++++++++8' \
     '1:1' \
     '2:+2' \
@@ -43,14 +43,14 @@ setup() {
     '10:+++++++++1' \
     '90:+++++++++1+++++++++2+++++++++3+++++++++4+++++++++5+++++++++6+++++++++7+++++++++8+++++++++9' \
   )
-  for pattern in "${patterns[@]}"; do 
+  for pattern in "${patterns[@]}"; do
     run gauge -t full "${pattern%%:*}"
     assert_output "${pattern##*:}"
   done
 }
 
 @test 'run gauge of even type' {
-  parameters=( \
+  patterns=( \
     ': + + + + 1 + + + + 2 + + + + 3 + + + + 4 + + + + 5 + + + + 6 + + + + 7 + + + + 8' \
     '1:1' \
     '2: 2' \
@@ -64,15 +64,15 @@ setup() {
     '10: + + + + 1' \
     '90: + + + + 1 + + + + 2 + + + + 3 + + + + 4 + + + + 5 + + + + 6 + + + + 7 + + + + 8 + + + + 9' \
   )
-  for pattern in "${patterns[@]}"; do 
+  for pattern in "${patterns[@]}"; do
     run gauge -t even "${pattern%%:*}"
     assert_output "${pattern##*:}"
   done
 }
 
 @test 'run gauge of five type' {
-  parameters=( \
-    ':    +    1    +    2    +    3    +    4    +    5    +    6    +    7    +    8' \ 
+  patterns=( \
+    ':    +    1    +    2    +    3    +    4    +    5    +    6    +    7    +    8' \
     '1:1' \
     '2: 2' \
     '3:  3' \
@@ -85,15 +85,15 @@ setup() {
     '10:    +    1' \
     '90:    +    1    +    2    +    3    +    4    +    5    +    6    +    7    +    8    +    9' \
   )
-  for pattern in "${patterns[@]}"; do 
+  for pattern in "${patterns[@]}"; do
     run gauge -t five "${pattern%%:*}"
     assert_output "${pattern##*:}"
   done
 }
 
 @test 'run gauge of ten type' {
-  parameters=( \
-    ':         1         2         3         4         5         6         7         8' \ 
+  patterns=( \
+    ':         1         2         3         4         5         6         7         8' \
     '1:1' \
     '2: 2' \
     '3:  3' \
@@ -106,7 +106,7 @@ setup() {
     '10:         1' \
     '90:         1         2         3         4         5         6         7         8         9' \
   )
-  for pattern in "${patterns[@]}"; do 
+  for pattern in "${patterns[@]}"; do
     run gauge -t ten "${pattern%%:*}"
     assert_output "${pattern##*:}"
   done

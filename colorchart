@@ -36,19 +36,20 @@
 #        8 |      28 | hide
 #
 
-readonly ME=$0
+readonly ME="$0"
 readonly AVAIL_EFFECTS=(0 1 2 4 5 7 8)
 AVAIL_FOREGROUNDS=(39 {30..37} {90..97})
 AVAIL_BACKGROUNDS=(49 {40..47} {100..107})
-readonly HEADER='ef;fg\bg'$(for i in ${AVAIL_BACKGROUNDS[@]}; do
-				[[ ${#i} == 2 ]] && echo -n "      $i" || echo -n "     $i"
-			    done)
+HEADER='ef;fg\bg'$(for i in "${AVAIL_BACKGROUNDS[@]}"; do
+	[[ ${#i} == 2 ]] && echo -n "      $i" || echo -n "     $i"
+done)
+readonly HEADER
 
 function __PrintUsage() {
     cat <<EOF
 Usage:
-  $(basename ${ME}) [<effect code> [<effect code>]]
-  $(basename ${ME}) -h
+  $(basename "${ME}") [<effect code> [<effect code>]]
+  $(basename "${ME}") -h
 Note:
   - Available foreground effects are 0, 1, 2, 4, 5, 7, and 8.
   - If effect code is omitted, whole color chart with all possible effects is printed.
@@ -56,38 +57,33 @@ EOF
 }
 
 function __PrintColorChart() {
-    local fg_eff=$1
-    echo "${HEADER}"
-    for fg_color in ${AVAIL_FOREGROUNDS[@]}; do
-	fg="${fg_eff};${fg_color}"
-	echo -ne "${fg}\t"
-	for bg_color in ${AVAIL_BACKGROUNDS[@]}; do
+  local fg_eff=$1
+  echo "${HEADER}"
+  for fg_color in "${AVAIL_FOREGROUNDS[@]}"; do
+	  fg="${fg_eff};${fg_color}"
+	  echo -ne "${fg}\t"
+	  for bg_color in "${AVAIL_BACKGROUNDS[@]}"; do
 	    echo -ne "\\033[${fg};${bg_color}m Sample "
-	done
-	echo -e "\033[0m"
-    done
+	  done
+	  echo -e "\033[0m"
+  done
 }
 readonly -f __PrintColorChart
 
-
-SEQ=$(which seq >/dev/null && which seq) || \
-    SEQ=$(which gseq >/dev/null && which gseq) || \
-    (echo "seq/gseq not installed" && exit 1)
-
 while getopts "h" flag; do
-    case $flag in
-	h)
+  case $flag in
+	  h)
 	    __PrintUsage
 	    exit 0
 	    ;;
-	*)
+	  *)
 	    __PrintUsage
 	    exit 1
 	    ;;
-    esac
+  esac
 done
 
-effects=(${*-${AVAIL_EFFECTS[@]}})
-for fg_eff in ${effects[@]}; do
-    [[ ${fg_eff} =~ ^[0124578]$ ]] && __PrintColorChart ${fg_eff}
+read -ar effects <<< "${*-${AVAIL_EFFECTS[@]}}"
+for fg_eff in "${effects[@]}"; do
+  [[ "${fg_eff}" =~ ^[0124578]$ ]] && __PrintColorChart "${fg_eff}"
 done
