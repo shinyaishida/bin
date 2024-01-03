@@ -4,7 +4,6 @@ function exit_with {
   local -r msg="${2:-unexpected error}"
   case "$1" in
     0)
-icommand_help="${icommand_help+${icommand_help}$'\n'}  q: quit interactive mode"
       exit 0;;
     *)
       echo -e "\033[31mERROR:\033[m $msg" >&2
