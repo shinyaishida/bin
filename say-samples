@@ -1,0 +1,113 @@
+#!/bin/bash
+
+function exit_with {
+  local -r msg="${2:-unexpected error}"
+  case "$1" in
+    0)
+icommand_help="${icommand_help+${icommand_help}$'\n'}  q: quit interactive mode"
+      exit 0;;
+    *)
+      echo -e "\033[31mERROR:\033[m $msg" >&2
+      exit "$1";;
+  esac
+}
+
+
+readonly me="${0##*/}"
+readonly SAY=say
+
+function print_usage {
+  cat <<EOF
+usage:
+    $me [options]
+
+options:
+    -a     play all the voice samples
+    -h     print this help
+EOF
+}
+
+function say_voices {
+  $SAY -v '?'
+}
+
+IFS=$'\n'
+voice_samples=()
+read -r -a voice_samples -d '\n' <<< "$(say_voices)"
+readonly voice_samples
+
+function play_sample {
+  local voice message
+  voice=$(cut -f 1 -d ' ' <<< "$1")
+  message=$(cut -f 2 -d '#' <<< "$1" | xargs)
+  echo "$voice is saying '$message'"
+  $SAY -v "$voice" "$message"
+}
+
+function play_samples {
+  for sample in "${voice_samples[@]}"; do
+    play_sample "$sample"
+  done
+}
+
+# @func PlaySamplesOfVoice
+# @key v
+# @desc play samples of specified voice
+function PlaySamplesOfVoice {
+  local voices=()
+  read -r -a voices -d ' ' <<< "$(say_voices | cut -f 1 -d ' ' | sort | uniq)"
+  local -r length=${#voices[@]}
+  tr ' ' '\n' <<< "${voices[@]}" | more -NR
+  input=$(prompt_interactive_command "voice number (1-${length})")
+  if [[ "$input" =~ [1-9][0-9]* ]] && [ "$input" -le "$length" ]; then
+    index=$((input - 1))
+    local -r voice=${voices[$index]}
+    for sample in $(say_voices | grep "$voice"); do
+      play_sample "$sample"
+    done
+  else
+    echo "invalid index: '$input'" >&2
+  fi
+}
+
+# @func PlaySamplesOfLocale
+# @key l
+# @desc play samples of specified locale
+function PlaySamplesOfLocale {
+  local locales=()
+  read -r -a locales -d ' ' <<< "$(say_voices | sed -e 's/^.* \([a-z][a-z]_[A-Z|0-9]\{2,3\}\) .*$/\1/g' | sort | uniq)"
+  local -r length=${#locales[@]}
+  tr ' ' '\n' <<< "${locales[@]}" | more -NR
+  input=$(prompt_interactive_command "locale number (1-${length})")
+  if [[ "$input" =~ [1-9][0-9]* ]] && [ "$input" -le "$length" ]; then
+    local -r index=$((input - 1))
+    local -r locale=${locales[$index]}
+    for sample in $(say_voices | grep "$locale"); do
+      play_sample "$sample"
+    done
+  else
+    echo "invalid index: '$input'" >&2
+  fi
+}
+
+readonly my_path="${0%"$me"}"
+source "${my_path}/interactive-mode-builder"
+
+build_interactive_command_list "$0" || exit_with 2 'failed in parsing interactive commands'
+while getopts 'ah' flag; do
+  case $flag in
+    a)
+      play_samples
+      exit_with 0
+      ;;
+    h)
+      print_usage
+      exit_with 0
+      ;;
+    *)
+      exit_with 3
+      ;;
+  esac
+done
+shift $((OPTIND - 1))
+enter_interactive_mode
