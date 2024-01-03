@@ -1,0 +1,156 @@
+# Utility to build interactive mode for Bash
+#
+# Note:
+# Using associative arrays is a better choice to implement this function.
+# However, it is supported from Bash version 4. The macOS's default bash is
+# still version 3.
+#
+#
+# Feature:
+# This utility provides a means to implement interacitve mode with single
+# letter commands on CLI. Each interactive command is defined as a Bash
+# function in your script with a specific header document with tags. This
+# utility parses the header documents and builds a list of interactive
+# commands in your script automatically.
+#
+#
+# Usage:
+# Write functions to implement features in the interactive mode. Each function
+# must have a header comment with tags as below.
+#
+#     # @func YourFunction
+#     # @key K
+#     # @desc A single line description of the interactive command.
+#     function YourFunction {
+#       ...
+#     }
+#
+# '@func' is a tag to specify the function name. It must be exactly same as
+# the name of the function you have written. '@key' is a tag to associate a
+# single letter to the function. Uses are supposed to input one of the letters
+# associated with the interactive command functions in the interactive mode.
+# '@desc' is a tag to put a brief description of the interacitve command
+# function. This description is shown in the command help.
+#
+# Note that there are two interactive command functions in this script, which
+# are commonly used in the interactive mode.
+#
+#     function QuitInteractiveMode
+#
+# This interactive function is prepared to quit the interactive mode. This
+# function simply exectes exit 0 command that terminate your script. 'q' is
+# associated with this function.
+#
+#     function ShowInteractiveCommands
+#
+# This interactive function is prepared to print the interactive commands
+# available in your script. 'h' is associated with this function.
+#
+# Then, source this script after the functions you have written to implement
+# interactive commands. Note that interactive command functions after sourcing
+# this script are not recognized by this utility and are not available in the
+# interactive mode.
+#
+#     path="${0%%*/}"
+#     source "${path}/interacitve-mode-builder"
+#
+# Build the interactive command list as below just before the main routine.
+#
+#     build_interactive_command_list $0 || exit 1
+#     < your main routine>
+#
+# Now you are ready to start the interactive mode.
+#
+#     enter_interactive_mode
+#
+#
+# Restrictions:
+# The following function and variable names are reserved by this utility.
+# Do not use these names in your script.
+#
+#     functions
+#     - build_interactive_command_list
+#     - enter_interactive_mode
+#     - execute_interactive_command
+#     - get_interactive_command
+#     - print_interactive_commands
+#     - prompt_interactive_command
+#
+#     variables:
+#     - icommand_map
+#     - icommand_help
+#
+
+# @func QuitInteractiveMode
+# @key q
+# @desc quit interactive mode
+function QuitInteractiveMode {
+  exit 0
+}
+icommand_map="${icommand_map+${icommand_map}$'\n'}q QuitInteractiveMode"
+icommand_help="${icommand_help+${icommand_help}$'\n'}  q: quit interactive mode"
+
+# @func ShowInteractiveCommands
+# @key h
+# @desc show interactive commands
+function ShowInteractiveCommands {
+  print_interactive_commands
+}
+icommand_map="${icommand_map+${icommand_map}$'\n'}h ShowInteractiveCommands"
+icommand_help="${icommand_help+${icommand_help}$'\n'}  h: show interactive commands"
+
+function build_interactive_command_list {
+  local icmd_docs
+  icmd_docs=$(grep '^# *@' "$1" | tr '\n' ' ')
+  icmd_docs=${icmd_docs//'# '}
+  local IFS=$'\n'
+  # shellcheck disable=SC2206
+  icmd_docs=( ${icmd_docs//@func /$'\n'} )
+  IFS=' '
+  for icmd_doc in "${icmd_docs[@]}"; do
+    read -r func_name at_key key at_desc desc <<< "${icmd_doc}"
+    [ -n "$func_name" ] && [ -n "$desc" ] && [ "$at_key" = "@key" ] && \
+      [ "$at_desc" = "@desc" ] && [[ "$key" =~ ^[a-zA-Z]$ ]] && {
+      icommand_map="${icommand_map+${icommand_map}$'\n'}$key $func_name"
+      icommand_help="${icommand_help+${icommand_help}$'\n'}  $key: $desc"
+    }
+  done
+  readonly icommand_map="$icommand_map"
+  readonly icommand_help="$icommand_help"
+}
+readonly -f build_interactive_command_list
+function print_interactive_commands {
+  echo "$icommand_help"
+}
+readonly -f print_interactive_commands
+
+function prompt_interactive_command {
+  local input
+  echo -en "\033[33m$1: \033[m" >&2 && read -r input
+  echo "$input"
+}
+readonly -f prompt_interactive_command
+
+function get_interactive_command {
+  local IFS=''
+  grep "^$1" <<< "$icommand_map" | cut -d ' ' -f 2
+}
+readonly -f get_interactive_command
+
+function execute_interactive_command {
+  local -r icmd=$(prompt_interactive_command 'command (h for help)')
+  local -r icmd_func=$(get_interactive_command "$icmd")
+  if [ "$icmd_func" ]; then
+    $icmd_func
+  else
+    print_interactive_commands
+  fi
+}
+readonly -f execute_interactive_command
+
+function enter_interactive_mode {
+  while true; do
+    execute_interactive_command
+  done
+}
+readonly -f enter_interactive_mode
