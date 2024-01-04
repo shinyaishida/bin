@@ -14,3 +14,8 @@ repos:
     language: system
     entry: shellcheck --shell=bash -x
     exclude: ^(.gitignore|.gitmodules|.pre-commit-config.yaml|LICENSE|README.md)$
+  - id: bats
+    name: Bats
+    description: Bash Automated Testing System
+    language: system
+    entry: ./test/run_tests
