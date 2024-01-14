@@ -2,6 +2,11 @@
 
 readonly envs=(pyenv rbenv nodenv)
 
+if [ "$OSTYPE" = "darwin" ]; then
+  echo "Use Homebrew to install and update xenv" >&2
+  exit 100
+fi
+
 for env in "${envs[@]}"; do
   echo "> $env"
   envdir="$HOME/.$env"
@@ -9,6 +14,7 @@ for env in "${envs[@]}"; do
     cd "$envdir" || exit 1
     if git rev-parse --is-inside-work-tree 2>/dev/null; then
       git pull
+      git -C "$envdir"/plugins/*-build pull
     else
       echo "$envdir is not a git repository"
     fi
