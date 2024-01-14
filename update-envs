@@ -2,8 +2,8 @@
 
 readonly envs=(pyenv rbenv nodenv)
 
-if [ "$OSTYPE" = "darwin" ]; then
-  echo "Use Homebrew to install and update xenv" >&2
+if [[ "$OSTYPE" =~ darwin ]]; then
+  echo "Use Homebrew to install and update xenv (OSTYPE=$OSTYPE)"  >&2
   exit 100
 fi
 
